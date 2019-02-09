@@ -19,12 +19,9 @@ func main() {
 			for {
 				// Create an account
 				key, _ := crypto.GenerateKey()
-
 				// Get the address
 				address := crypto.PubkeyToAddress(key.PublicKey).Hex()
-				// fmt.Println(address)
-
-				if strings.HasPrefix(address, "0x888888") {
+				if strings.HasPrefix(address, "0x88888888") || strings.HasSuffix(address, "88888888") {
 					// Get the private key
 					privateKey := hex.EncodeToString(key.D.Bytes())
 					fmt.Println(privateKey)
