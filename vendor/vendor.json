@@ -1,0 +1,56 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "gZQ6HheWahvZzIc3phBnOwoWHjE=",
+			"origin": "github.com/ethereum/go-ethereum/vendor/github.com/btcsuite/btcd/btcec",
+			"path": "github.com/btcsuite/btcd/btcec",
+			"revision": "27ce4eb78bdf5d9b742ed05babe9b86a434733a1",
+			"revisionTime": "2018-12-20T13:00:58Z"
+		},
+		{
+			"checksumSHA1": "Yh3wM/Zt0k14OGTIaGMG0CDkTEA=",
+			"path": "github.com/ethereum/go-ethereum/common",
+			"revision": "27ce4eb78bdf5d9b742ed05babe9b86a434733a1",
+			"revisionTime": "2018-12-20T13:00:58Z"
+		},
+		{
+			"checksumSHA1": "2EkKilu0Q1uuX7XoHks8qnW/LXo=",
+			"path": "github.com/ethereum/go-ethereum/common/hexutil",
+			"revision": "27ce4eb78bdf5d9b742ed05babe9b86a434733a1",
+			"revisionTime": "2018-12-20T13:00:58Z"
+		},
+		{
+			"checksumSHA1": "BP3m/oEeoC9ustdCYzAVS/gabqg=",
+			"path": "github.com/ethereum/go-ethereum/common/math",
+			"revision": "27ce4eb78bdf5d9b742ed05babe9b86a434733a1",
+			"revisionTime": "2018-12-20T13:00:58Z"
+		},
+		{
+			"checksumSHA1": "pHVxq5ihwkctBKM3n7Trj7D2UYw=",
+			"path": "github.com/ethereum/go-ethereum/crypto",
+			"revision": "27ce4eb78bdf5d9b742ed05babe9b86a434733a1",
+			"revisionTime": "2018-12-20T13:00:58Z"
+		},
+		{
+			"checksumSHA1": "09V3eE1EhOkdfksyjsH+03c5fQg=",
+			"path": "github.com/ethereum/go-ethereum/crypto/secp256k1",
+			"revision": "27ce4eb78bdf5d9b742ed05babe9b86a434733a1",
+			"revisionTime": "2018-12-20T13:00:58Z"
+		},
+		{
+			"checksumSHA1": "pQzUVRi0z/3Z4FpRyExSg1ROLSA=",
+			"path": "github.com/ethereum/go-ethereum/crypto/sha3",
+			"revision": "27ce4eb78bdf5d9b742ed05babe9b86a434733a1",
+			"revisionTime": "2018-12-20T13:00:58Z"
+		},
+		{
+			"checksumSHA1": "zrskypwp1RbmLX2f/47diH1vxQc=",
+			"path": "github.com/ethereum/go-ethereum/rlp",
+			"revision": "27ce4eb78bdf5d9b742ed05babe9b86a434733a1",
+			"revisionTime": "2018-12-20T13:00:58Z"
+		}
+	],
+	"rootPath": "github.com/hadv/pretty-ethereum-address"
+}
