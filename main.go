@@ -21,7 +21,7 @@ func main() {
 				key, _ := crypto.GenerateKey()
 				// Get the address
 				address := crypto.PubkeyToAddress(key.PublicKey).Hex()
-				if strings.HasPrefix(address, "0x88888888") || strings.HasSuffix(address, "88888888") {
+				if strings.HasPrefix(address, "0x314159") || strings.HasSuffix(address, "314159") {
 					// Get the private key
 					privateKey := hex.EncodeToString(key.D.Bytes())
 					fmt.Println(privateKey)
