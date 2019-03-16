@@ -13,8 +13,8 @@ import (
 func main() {
 	quit := make(chan bool)
 	var wg sync.WaitGroup
-	wg.Add(5000)
 	for i := 0; i < 5000; i++ {
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for {
@@ -26,7 +26,7 @@ func main() {
 					key, _ := crypto.GenerateKey()
 					// Get the address
 					address := crypto.PubkeyToAddress(key.PublicKey).Hex()
-					if strings.HasSuffix(address, "31415") {
+					if strings.HasSuffix(address, "888888") {
 						// Get the private key
 						privateKey := hex.EncodeToString(key.D.Bytes())
 						fmt.Println(privateKey)
