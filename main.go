@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"os"
 	"runtime"
 	"strings"
@@ -11,7 +12,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
+	"golang.org/x/crypto/sha3"
+)
+
+const (
+	// CREATE2 data buffer size: 0xff (1 byte) + deployer_address (20 bytes) + salt (32 bytes) + init_code_hash (32 bytes)
+	size = 1 + 20 + 32 + 32
 )
 
 // hexCharToNibble converts a single hex character to its numeric value
@@ -31,14 +37,19 @@ func hexToByte(c1, c2 byte) byte {
 // address = keccak256(0xff ++ deployer_address ++ salt ++ keccak256(init_code))[12:]
 // Returns the 20-byte address directly
 // The data buffer is reused and only the salt portion (bytes 21-53) needs to be updated
-func calculateCreate2Address(data []byte, salt [32]byte) [20]byte {
+// The hasher is reused to avoid allocations in the hot loop
+func calculateCreate2Address(hasher hash.Hash, data []byte, salt [32]byte) [20]byte {
 	// Update only the salt portion (bytes 21-53)
 	copy(data[21:53], salt[:])
 
-	// Hash and take last 20 bytes
-	hash := crypto.Keccak256(data)
+	// Hash using reusable hasher
+	hasher.Reset()
+	hasher.Write(data)
+	hashBytes := hasher.Sum(nil)
+
+	// Take last 20 bytes for address
 	var result [20]byte
-	copy(result[:], hash[12:])
+	copy(result[:], hashBytes[12:32])
 	return result
 }
 
@@ -79,7 +90,7 @@ func main() {
 
 	// Pre-build the CREATE2 data buffer template (only salt will change per iteration)
 	// Format: 0xff ++ deployer_address ++ salt ++ init_code_hash
-	dataTemplate := make([]byte, 1+20+32+32)
+	dataTemplate := make([]byte, size)
 	dataTemplate[0] = 0xff
 	copy(dataTemplate[1:21], deployerAddressBytes[:])
 	// bytes 21-53 are for salt (will be updated in each iteration)
@@ -101,8 +112,10 @@ func main() {
 		go func() {
 			defer wg.Done()
 			// Each goroutine gets its own data buffer to avoid race conditions
-			data := make([]byte, len(dataTemplate))
-			copy(data, dataTemplate)
+			data := append([]byte{}, dataTemplate...)
+
+			// Create a reusable Keccak256 hasher for this goroutine
+			hasher := sha3.NewLegacyKeccak256()
 
 			for {
 				select {
@@ -114,7 +127,7 @@ func main() {
 					rand.Read(salt[:])
 
 					// Calculate CREATE2 address (returns bytes directly)
-					addressBytes := calculateCreate2Address(data, salt)
+					addressBytes := calculateCreate2Address(hasher, data, salt)
 
 					// Check if address matches pattern - direct byte comparison for performance
 					matched := true
