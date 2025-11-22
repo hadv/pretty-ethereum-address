@@ -64,9 +64,9 @@ Using 12 CPU cores with 9600 goroutines
 
 
 Found!
-Salt: 0xdc29329056cbe845d85b9877691d0932ea1a59fd37e878d7e6d0ae3464ebe397
-Address: 0x000000f76928e94b2eced8d049b1772d54878cea
-Time elapsed: 8.838849095s
+Salt: 0x6bc1fbf8b243d862a1e499bc176c9c31876b2fd64aa2786da5e37984b3daa169
+Address: 0x000000e4f497a715960a1c8625e13d416066a239
+Time elapsed: 5.399090451s
 ```
 
 ## Performance Tuning

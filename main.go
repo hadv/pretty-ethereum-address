@@ -14,32 +14,26 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+// hexCharToNibble converts a single hex character to its numeric value
+func hexCharToNibble(c byte) byte {
+	if c >= '0' && c <= '9' {
+		return c - '0'
+	}
+	return c - 'a' + 10
+}
+
 // hexToByte converts two hex characters to a byte
 func hexToByte(c1, c2 byte) byte {
-	var b1, b2 byte
-	if c1 >= '0' && c1 <= '9' {
-		b1 = c1 - '0'
-	} else if c1 >= 'a' && c1 <= 'f' {
-		b1 = c1 - 'a' + 10
-	}
-	if c2 >= '0' && c2 <= '9' {
-		b2 = c2 - '0'
-	} else if c2 >= 'a' && c2 <= 'f' {
-		b2 = c2 - 'a' + 10
-	}
-	return (b1 << 4) | b2
+	return (hexCharToNibble(c1) << 4) | hexCharToNibble(c2)
 }
 
 // calculateCreate2Address computes the CREATE2 address
 // address = keccak256(0xff ++ deployer_address ++ salt ++ keccak256(init_code))[12:]
 // Returns the 20-byte address directly
-func calculateCreate2Address(deployerAddressBytes [20]byte, salt [32]byte, initCodeHash [32]byte) [20]byte {
-	// Prepare the data: 0xff ++ deployer_address ++ salt ++ init_code_hash
-	data := make([]byte, 1+20+32+32)
-	data[0] = 0xff
-	copy(data[1:21], deployerAddressBytes[:])
+// The data buffer is reused and only the salt portion (bytes 21-53) needs to be updated
+func calculateCreate2Address(data []byte, salt [32]byte) [20]byte {
+	// Update only the salt portion (bytes 21-53)
 	copy(data[21:53], salt[:])
-	copy(data[53:85], initCodeHash[:])
 
 	// Hash and take last 20 bytes
 	hash := crypto.Keccak256(data)
@@ -83,6 +77,14 @@ func main() {
 	var deployerAddressBytes [20]byte
 	copy(deployerAddressBytes[:], deployerAddress.Bytes())
 
+	// Pre-build the CREATE2 data buffer template (only salt will change per iteration)
+	// Format: 0xff ++ deployer_address ++ salt ++ init_code_hash
+	dataTemplate := make([]byte, 1+20+32+32)
+	dataTemplate[0] = 0xff
+	copy(dataTemplate[1:21], deployerAddressBytes[:])
+	// bytes 21-53 are for salt (will be updated in each iteration)
+	copy(dataTemplate[53:85], initCodeHash[:])
+
 	fmt.Printf("Searching for CREATE2 address starting with '%s'...\n", pattern)
 	fmt.Printf("Deployer: %s\n", deployerAddress.Hex())
 	fmt.Printf("Init Code Hash: 0x%s\n", hex.EncodeToString(initCodeHash[:]))
@@ -94,10 +96,14 @@ func main() {
 
 	quit := make(chan bool)
 	var wg sync.WaitGroup
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// Each goroutine gets its own data buffer to avoid race conditions
+			data := make([]byte, len(dataTemplate))
+			copy(data, dataTemplate)
+
 			for {
 				select {
 				case <-quit:
@@ -108,11 +114,11 @@ func main() {
 					rand.Read(salt[:])
 
 					// Calculate CREATE2 address (returns bytes directly)
-					addressBytes := calculateCreate2Address(deployerAddressBytes, salt, initCodeHash)
+					addressBytes := calculateCreate2Address(data, salt)
 
 					// Check if address matches pattern - direct byte comparison for performance
 					matched := true
-					for i := 0; i < len(patternBytes); i++ {
+					for i := range patternBytes {
 						if addressBytes[i] != patternBytes[i] {
 							matched = false
 							break
