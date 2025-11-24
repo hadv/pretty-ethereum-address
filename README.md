@@ -16,6 +16,7 @@ address = keccak256(0xff ++ deployer_address ++ salt ++ keccak256(init_code))[12
 - 🚀 **Highly Optimized**: Direct byte comparison, pre-calculated values, zero allocations in hot loop
 - ⚡ **Multi-core Support**: Automatically uses all CPU cores with configurable goroutines
 - 🎯 **Flexible Patterns**: Search for any hex pattern (prefix matching)
+- 🔑 **Salt Prefix Support**: Generate salts with fixed prefixes for Solady CREATE2 factory
 - ⏱️ **Performance Tracking**: Shows time elapsed when a match is found
 - 🔧 **Easy Configuration**: Simple variables to customize search parameters
 
@@ -29,7 +30,9 @@ go build
 
 ## Usage
 
-### 1. Configure the Search Parameters
+### Standard CREATE2 Deployment
+
+#### 1. Configure the Search Parameters
 
 Edit `main.go` and set these values:
 
@@ -41,20 +44,20 @@ numCores := runtime.NumCPU()                                                    
 numGoroutines := numCores * 100                                                       // Goroutines per core
 ```
 
-### 2. Get Your Init Code Hash
+#### 2. Get Your Init Code Hash
 
 The init code hash is the keccak256 hash of your contract's creation bytecode. You can get this from:
 - Hardhat/Foundry deployment scripts
 - Remix compiler output
 - Or calculate it manually: `keccak256(type(YourContract).creationCode)`
 
-### 3. Run the Program
+#### 3. Run the Program
 
 ```bash
 ./pretty-ethereum-address
 ```
 
-### 4. Example Output
+#### 4. Example Output
 
 ```
 Searching for CREATE2 address starting with '0x000000'...
@@ -68,6 +71,54 @@ Salt: 0x6bc1fbf8b243d862a1e499bc176c9c31876b2fd64aa2786da5e37984b3daa169
 Address: 0x000000e4f497a715960a1c8625e13d416066a239
 Time elapsed: 5.399090451s
 ```
+
+### Using Solady CREATE2 Factory
+
+The Solady CREATE2 factory requires salts with a specific prefix (the caller's address). This tool supports generating salts with fixed prefixes.
+
+#### Configuration for Solady Factory
+
+The current configuration in `main.go` is set up for the Solady CREATE2 factory:
+
+```go
+// Solady CREATE2 Factory Configuration
+deployerAddress := common.HexToAddress("0x0000000000ffe8b47b3e2130213b802212439497")  // Solady factory address
+initCodeHashStr := "747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a" // Your contract's init code hash
+pattern := "0x000000"                                                                 // Pattern to search for
+
+// Salt prefix (pre-calculated outside the loop for performance)
+saltPrefix := common.HexToAddress("0x18Ee4C040568238643C07e7aFd6c53efc196D26b")  // Your address (caller)
+```
+
+#### How Salt Prefix Works
+
+- **First 20 bytes**: Fixed prefix (your address as the caller)
+- **Last 12 bytes**: Randomly generated
+- The prefix is pre-calculated once for optimal performance
+
+#### Deploying with Solady Factory
+
+Once you find a matching salt, deploy using the Solady CREATE2 factory:
+
+```solidity
+// Solady CREATE2 factory interface
+interface ICreate2Factory {
+    function deploy(bytes32 salt, bytes memory initCode) external returns (address);
+}
+
+// Deploy your contract
+ICreate2Factory factory = ICreate2Factory(0x0000000000FFe8B47B3e2130213B802212439497);
+bytes memory initCode = type(YourContract).creationCode;
+bytes32 salt = 0x18Ee4C040568238643C07e7aFd6c53efc196D26b000000000000000000000123; // Salt found by the tool
+address deployed = factory.deploy(salt, initCode);
+```
+
+#### Key Points
+
+- The Solady factory is deployed at: `0x0000000000FFe8B47B3e2130213B802212439497`
+- The factory automatically prepends the caller's address to the salt
+- Your salt prefix must match your deploying address
+- The tool optimizes by only randomizing the last 12 bytes
 
 ## Performance Tuning
 
@@ -117,6 +168,7 @@ The difficulty increases exponentially with pattern length:
 
 - ✅ Direct byte comparison (no string allocations)
 - ✅ Pre-calculated pattern and deployer bytes
+- ✅ Pre-calculated salt prefix (for Solady factory mode)
 - ✅ Returns bytes directly from CREATE2 calculation
 - ✅ Early exit on byte mismatch
 - ✅ Zero allocations in hot loop
