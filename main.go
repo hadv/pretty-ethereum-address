@@ -55,8 +55,8 @@ func calculateCreate2Address(hasher hash.Hash, data []byte, salt [32]byte) [20]b
 
 func main() {
 	// Configuration - modify these values
-	deployerAddress := common.HexToAddress("0x18Ee4C040568238643C07e7aFd6c53efc196D26b")  // Replace with your deployer address
-	initCodeHashStr := "ed6d47ef8858bf77ca8c43589269de4a0242b881ab9d2f8704546ce86ab20879" // Replace with keccak256(init_code)
+	deployerAddress := common.HexToAddress("0x0000000000ffe8b47b3e2130213b802212439497")  // Replace with your deployer address
+	initCodeHashStr := "747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a" // Replace with keccak256(init_code)
 	pattern := "0x000000"                                                                 // Pattern to search for (prefix)
 	numCores := runtime.NumCPU()                                                          // Use all available CPU cores (or set a specific number)
 
@@ -87,6 +87,11 @@ func main() {
 	// Pre-calculate deployer address bytes once
 	var deployerAddressBytes [20]byte
 	copy(deployerAddressBytes[:], deployerAddress.Bytes())
+
+	// Pre-calculate salt prefix (20 bytes) - only the last 12 bytes will be random
+	saltPrefix := common.HexToAddress("0x18Ee4C040568238643C07e7aFd6c53efc196D26b")
+	var saltPrefixBytes [20]byte
+	copy(saltPrefixBytes[:], saltPrefix.Bytes())
 
 	// Pre-build the CREATE2 data buffer template (only salt will change per iteration)
 	// Format: 0xff ++ deployer_address ++ salt ++ init_code_hash
@@ -122,9 +127,12 @@ func main() {
 				case <-quit:
 					return
 				default:
-					// Generate random salt
+					// Generate random salt with fixed prefix
 					var salt [32]byte
-					rand.Read(salt[:])
+					// Copy pre-calculated prefix (20 bytes)
+					copy(salt[:20], saltPrefixBytes[:])
+					// Random suffix (remaining 12 bytes)
+					rand.Read(salt[20:])
 
 					// Calculate CREATE2 address (returns bytes directly)
 					addressBytes := calculateCreate2Address(hasher, data, salt)
