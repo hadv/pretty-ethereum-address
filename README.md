@@ -60,16 +60,16 @@ The init code hash is the keccak256 hash of your contract's creation bytecode. Y
 #### 4. Example Output
 
 ```
-Searching for CREATE2 address starting with '0x000000'...
-Deployer: 0x18Ee4C040568238643C07e7aFd6c53efc196D26b
-Init Code Hash: 0xed6d47ef8858bf77ca8c43589269de4a0242b881ab9d2f8704546ce86ab20879
+Searching for CREATE2 address starting with '0x00000000'...
+Deployer: 0x0000000000FFe8B47B3e2130213B802212439497
+Init Code Hash: 0x747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a
 Using 12 CPU cores with 9600 goroutines
 
 
 Found!
-Salt: 0x6bc1fbf8b243d862a1e499bc176c9c31876b2fd64aa2786da5e37984b3daa169
-Address: 0x000000e4f497a715960a1c8625e13d416066a239
-Time elapsed: 5.399090451s
+Salt: 0x18ee4c040568238643c07e7afd6c53efc196d26bb3aa4a73c14310c5a4a12b1b
+Address: 0x000000006e38ec9e8074ed84cbcbf4b9d8773b7e
+Time elapsed: 2m51.724719347s
 ```
 
 ### Using Solady CREATE2 Factory
