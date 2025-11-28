@@ -1,7 +1,7 @@
 .PHONY: build build-gpu clean run run-gpu install test help list-gpus
 
 # Binary name
-BINARY_NAME=pretty-ethereum-address
+BINARY_NAME=vaneth
 
 # Go parameters
 GOCMD=go
@@ -97,6 +97,6 @@ help:
 	@echo "  Tested with: AMD Radeon Pro 555X"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make build-gpu && ./pretty-ethereum-address --list-gpus"
+	@echo "  make build-gpu && ./vaneth --list-gpus"
 	@echo "  make run-gpu"
 
