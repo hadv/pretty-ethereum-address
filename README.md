@@ -1,6 +1,6 @@
-# pretty-ethereum-address
+# Vaneth - Ethereum Vanity Address Miner ⛏️
 
-Generate vanity Ethereum contract addresses using CREATE2 opcode by finding the perfect salt.
+> GPU-accelerated CREATE2 vanity address miner for Ethereum using [Solady CREATE2 Factory](https://github.com/Vectorized/solady)
 
 ## Overview
 
@@ -26,8 +26,8 @@ address = keccak256(0xff ++ deployer_address ++ salt ++ keccak256(init_code))[12
 ### Standard Build (CPU only)
 
 ```bash
-git clone https://github.com/hadv/pretty-ethereum-address.git
-cd pretty-ethereum-address
+git clone https://github.com/hadv/vaneth.git
+cd vaneth
 go build
 ```
 
@@ -70,7 +70,7 @@ The init code hash is the keccak256 hash of your contract's creation bytecode. Y
 #### 3. Run the Program
 
 ```bash
-./pretty-ethereum-address
+./vaneth
 ```
 
 #### 4. Example Output
@@ -143,7 +143,7 @@ GPU acceleration provides significantly faster mining by leveraging OpenCL on AM
 #### List Available GPUs
 
 ```bash
-./pretty-ethereum-address --list-gpus
+./vaneth --list-gpus
 ```
 
 Example output:
@@ -156,7 +156,7 @@ Available GPUs:
 #### Run with GPU
 
 ```bash
-./pretty-ethereum-address --gpu --gpu-device 1 \
+./vaneth --gpu --gpu-device 1 \
   -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a \
   -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b \
   -p 0x0000
