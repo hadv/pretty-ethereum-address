@@ -1,4 +1,4 @@
-.PHONY: build clean run install test help
+.PHONY: build build-gpu clean run run-gpu install test help list-gpus
 
 # Binary name
 BINARY_NAME=pretty-ethereum-address
@@ -15,6 +15,9 @@ GOMOD=$(GOCMD) mod
 LDFLAGS=-ldflags="-s -w"
 GCFLAGS=-gcflags="-l=4"
 
+# Detect OS
+UNAME_S := $(shell uname -s)
+
 # Default target
 all: build
 
@@ -22,6 +25,11 @@ all: build
 build:
 	@echo "Building optimized binary..."
 	GOPROXY=https://proxy.golang.org,direct $(GOBUILD) $(LDFLAGS) $(GCFLAGS) -o $(BINARY_NAME) -v
+
+## build-gpu: Build with GPU support (macOS only, uses OpenCL)
+build-gpu:
+	@echo "Building with GPU support..."
+	CGO_ENABLED=1 GOPROXY=https://proxy.golang.org,direct $(GOBUILD) $(LDFLAGS) $(GCFLAGS) -o $(BINARY_NAME) -v
 
 ## build-debug: Build the binary with debug symbols
 build-debug:
@@ -35,10 +43,19 @@ clean:
 	rm -f $(BINARY_NAME)
 	rm -rf dist/
 
-## run: Build and run the application
+## run: Build and run the application (CPU mode)
 run: build
-	@echo "Running..."
+	@echo "Running in CPU mode..."
 	./$(BINARY_NAME)
+
+## run-gpu: Build and run in GPU mode (macOS only)
+run-gpu: build-gpu
+	@echo "Running in GPU mode..."
+	./$(BINARY_NAME) --gpu
+
+## list-gpus: List available GPU devices
+list-gpus: build-gpu
+	./$(BINARY_NAME) --list-gpus
 
 ## install: Install dependencies
 install:
@@ -74,4 +91,12 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@grep -E '^## ' Makefile | sed 's/## /  /'
+	@echo ""
+	@echo "GPU Support (macOS only):"
+	@echo "  Uses OpenCL to accelerate mining on AMD GPUs"
+	@echo "  Tested with: AMD Radeon Pro 555X"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make build-gpu && ./pretty-ethereum-address --list-gpus"
+	@echo "  make run-gpu"
 
