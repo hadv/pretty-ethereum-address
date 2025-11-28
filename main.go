@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"hash"
 	"os"
@@ -54,19 +55,52 @@ func calculateCreate2Address(hasher hash.Hash, data []byte, salt [32]byte) [20]b
 }
 
 func main() {
-	// Configuration - modify these values
-	deployerAddress := common.HexToAddress("0x0000000000ffe8b47b3e2130213b802212439497")  // Replace with your deployer address
-	initCodeHashStr := "747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a" // Replace with keccak256(init_code)
-	pattern := "0x00000000"                                                               // Pattern to search for (prefix)
-	numCores := runtime.NumCPU()                                                          // Use all available CPU cores (or set a specific number)
+	// Define CLI flags
+	initCodeHashStr := flag.String("init-code-hash", "", "The keccak256 hash of the init code (hex string, required)")
+	flag.StringVar(initCodeHashStr, "i", "", "The keccak256 hash of the init code (hex string, required) (shorthand)")
 
-	// Set the maximum number of CPUs to use
-	runtime.GOMAXPROCS(numCores)
+	pattern := flag.String("pattern", "0x00000000", "The address pattern/prefix to search for")
+	flag.StringVar(pattern, "p", "0x00000000", "The address pattern/prefix to search for (shorthand)")
 
-	// Calculate number of goroutines (you can adjust the multiplier)
-	numGoroutines := numCores * 800 // 800 goroutines per core
+	saltPrefixStr := flag.String("salt-prefix", "", "The salt prefix address - first 20 bytes of salt (hex string, required)")
+	flag.StringVar(saltPrefixStr, "s", "", "The salt prefix address - first 20 bytes of salt (hex string, required) (shorthand)")
 
-	initCodeHashBytes, err := hex.DecodeString(initCodeHashStr)
+	deployerAddressStr := flag.String("deployer", "0x0000000000ffe8b47b3e2130213b802212439497", "The deployer contract address")
+	flag.StringVar(deployerAddressStr, "d", "0x0000000000ffe8b47b3e2130213b802212439497", "The deployer contract address (shorthand)")
+
+	// Custom usage message
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "A tool to find CREATE2 salt values that produce addresses with desired prefixes.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExample:\n")
+		fmt.Fprintf(os.Stderr, "  %s -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n", os.Args[0])
+	}
+
+	flag.Parse()
+
+	// Validate required flags
+	if *initCodeHashStr == "" {
+		fmt.Fprintln(os.Stderr, "Error: --init-code-hash (-i) is required")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	if *saltPrefixStr == "" {
+		fmt.Fprintln(os.Stderr, "Error: --salt-prefix (-s) is required")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	// Validate and parse init code hash
+	normalizedInitCodeHash := strings.TrimPrefix(strings.ToLower(*initCodeHashStr), "0x")
+	if len(normalizedInitCodeHash) != 64 {
+		fmt.Fprintln(os.Stderr, "Error: --init-code-hash must be a 32-byte hex string (64 hex characters)")
+		os.Exit(1)
+	}
+
+	initCodeHashBytes, err := hex.DecodeString(normalizedInitCodeHash)
 	if err != nil {
 		fmt.Println("Error decoding init code hash:", err)
 		os.Exit(1)
@@ -74,8 +108,50 @@ func main() {
 	var initCodeHash [32]byte
 	copy(initCodeHash[:], initCodeHashBytes)
 
-	// Normalize pattern: remove 0x prefix and convert to lowercase
-	normalizedPattern := strings.TrimPrefix(strings.ToLower(pattern), "0x")
+	// Validate and parse salt prefix
+	normalizedSaltPrefix := strings.TrimPrefix(strings.ToLower(*saltPrefixStr), "0x")
+	if len(normalizedSaltPrefix) != 40 {
+		fmt.Fprintln(os.Stderr, "Error: --salt-prefix must be a 20-byte address (40 hex characters)")
+		os.Exit(1)
+	}
+	if !common.IsHexAddress(*saltPrefixStr) {
+		fmt.Fprintln(os.Stderr, "Error: --salt-prefix is not a valid hex address")
+		os.Exit(1)
+	}
+	saltPrefix := common.HexToAddress(*saltPrefixStr)
+
+	// Validate and parse deployer address
+	if !common.IsHexAddress(*deployerAddressStr) {
+		fmt.Fprintln(os.Stderr, "Error: --deployer is not a valid hex address")
+		os.Exit(1)
+	}
+	deployerAddress := common.HexToAddress(*deployerAddressStr)
+
+	// Validate pattern
+	normalizedPattern := strings.TrimPrefix(strings.ToLower(*pattern), "0x")
+	if len(normalizedPattern)%2 != 0 {
+		fmt.Fprintln(os.Stderr, "Error: --pattern must have an even number of hex characters")
+		os.Exit(1)
+	}
+	if len(normalizedPattern) > 40 {
+		fmt.Fprintln(os.Stderr, "Error: --pattern cannot be longer than 40 hex characters (20 bytes)")
+		os.Exit(1)
+	}
+	for _, c := range normalizedPattern {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			fmt.Fprintln(os.Stderr, "Error: --pattern contains invalid hex characters")
+			os.Exit(1)
+		}
+	}
+
+	numCores := runtime.NumCPU() // Use all available CPU cores
+
+	// Set the maximum number of CPUs to use
+	runtime.GOMAXPROCS(numCores)
+
+	// Calculate number of goroutines (you can adjust the multiplier)
+	numGoroutines := numCores * 800 // 800 goroutines per core
+
 	patternLen := len(normalizedPattern)
 
 	// Pre-calculate pattern bytes once
@@ -89,7 +165,6 @@ func main() {
 	copy(deployerAddressBytes[:], deployerAddress.Bytes())
 
 	// Pre-calculate salt prefix (20 bytes) - only the last 12 bytes will be random
-	saltPrefix := common.HexToAddress("0x18Ee4C040568238643C07e7aFd6c53efc196D26b")
 	var saltPrefixBytes [20]byte
 	copy(saltPrefixBytes[:], saltPrefix.Bytes())
 
@@ -101,8 +176,9 @@ func main() {
 	// bytes 21-53 are for salt (will be updated in each iteration)
 	copy(dataTemplate[53:85], initCodeHash[:])
 
-	fmt.Printf("Searching for CREATE2 address starting with '%s'...\n", pattern)
+	fmt.Printf("Searching for CREATE2 address starting with '%s'...\n", *pattern)
 	fmt.Printf("Deployer: %s\n", deployerAddress.Hex())
+	fmt.Printf("Salt Prefix: %s\n", saltPrefix.Hex())
 	fmt.Printf("Init Code Hash: 0x%s\n", hex.EncodeToString(initCodeHash[:]))
 	fmt.Printf("Using %d CPU cores with %d goroutines\n", numCores, numGoroutines)
 	fmt.Println()
