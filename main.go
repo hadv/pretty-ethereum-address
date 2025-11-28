@@ -57,7 +57,7 @@ func main() {
 	// Configuration - modify these values
 	deployerAddress := common.HexToAddress("0x0000000000ffe8b47b3e2130213b802212439497")  // Replace with your deployer address
 	initCodeHashStr := "747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a" // Replace with keccak256(init_code)
-	pattern := "0x000000"                                                                 // Pattern to search for (prefix)
+	pattern := "0x00000000"                                                               // Pattern to search for (prefix)
 	numCores := runtime.NumCPU()                                                          // Use all available CPU cores (or set a specific number)
 
 	// Set the maximum number of CPUs to use
