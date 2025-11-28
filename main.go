@@ -198,38 +198,36 @@ func main() {
 			// Create a reusable Keccak256 hasher for this goroutine
 			hasher := sha3.NewLegacyKeccak256()
 
+			// Pre-allocate salt with fixed prefix (only last 12 bytes change)
+			var salt [32]byte
+			copy(salt[:20], saltPrefixBytes[:])
+
+		loop:
 			for {
 				select {
 				case <-quit:
 					return
 				default:
-					// Generate random salt with fixed prefix
-					var salt [32]byte
-					// Copy pre-calculated prefix (20 bytes)
-					copy(salt[:20], saltPrefixBytes[:])
-					// Random suffix (remaining 12 bytes)
+					// Randomize only the last 12 bytes of salt
 					rand.Read(salt[20:])
 
 					// Calculate CREATE2 address (returns bytes directly)
 					addressBytes := calculateCreate2Address(hasher, data, salt)
 
 					// Check if address matches pattern - direct byte comparison for performance
-					matched := true
 					for i := range patternBytes {
 						if addressBytes[i] != patternBytes[i] {
-							matched = false
-							break
+							continue loop
 						}
 					}
 
-					if matched {
-						elapsed := time.Since(startTime)
-						fmt.Printf("\nFound!\n")
-						fmt.Printf("Salt: 0x%s\n", hex.EncodeToString(salt[:]))
-						fmt.Printf("Address: 0x%s\n", hex.EncodeToString(addressBytes[:]))
-						fmt.Printf("Time elapsed: %s\n", elapsed)
-						os.Exit(0)
-					}
+					// All bytes matched - we found it!
+					elapsed := time.Since(startTime)
+					fmt.Printf("\nFound!\n")
+					fmt.Printf("Salt: 0x%s\n", hex.EncodeToString(salt[:]))
+					fmt.Printf("Address: 0x%s\n", hex.EncodeToString(addressBytes[:]))
+					fmt.Printf("Time elapsed: %s\n", elapsed)
+					os.Exit(0)
 				}
 			}
 		}()
