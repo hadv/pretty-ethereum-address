@@ -1,59 +1,16 @@
 package main
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"hash"
 	"os"
-	"runtime"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"golang.org/x/crypto/sha3"
+	"github.com/hadv/vaneth/miner"
 )
-
-const (
-	// CREATE2 data buffer size: 0xff (1 byte) + deployer_address (20 bytes) + salt (32 bytes) + init_code_hash (32 bytes)
-	size = 1 + 20 + 32 + 32
-)
-
-// hexCharToNibble converts a single hex character to its numeric value
-func hexCharToNibble(c byte) byte {
-	if c >= '0' && c <= '9' {
-		return c - '0'
-	}
-	return c - 'a' + 10
-}
-
-// hexToByte converts two hex characters to a byte
-func hexToByte(c1, c2 byte) byte {
-	return (hexCharToNibble(c1) << 4) | hexCharToNibble(c2)
-}
-
-// calculateCreate2Address computes the CREATE2 address
-// address = keccak256(0xff ++ deployer_address ++ salt ++ keccak256(init_code))[12:]
-// Returns the 20-byte address directly
-// The data buffer is reused and only the salt portion (bytes 21-53) needs to be updated
-// The hasher is reused to avoid allocations in the hot loop
-func calculateCreate2Address(hasher hash.Hash, data []byte, salt [32]byte) [20]byte {
-	// Update only the salt portion (bytes 21-53)
-	copy(data[21:53], salt[:])
-
-	// Hash using reusable hasher
-	hasher.Reset()
-	hasher.Write(data)
-	hashBytes := hasher.Sum(nil)
-
-	// Take last 20 bytes for address
-	var result [20]byte
-	copy(result[:], hashBytes[12:32])
-	return result
-}
 
 func main() {
 	// Define CLI flags
@@ -96,7 +53,7 @@ func main() {
 
 	// Handle --list-gpus
 	if *listGPUs {
-		gpus, err := ListGPUs()
+		gpus, err := miner.ListGPUs()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error listing GPUs: %v\n", err)
 			os.Exit(1)
@@ -184,7 +141,7 @@ func main() {
 	// Pre-calculate pattern bytes once
 	patternBytes := make([]byte, patternLen/2)
 	for i := 0; i < patternLen/2; i++ {
-		patternBytes[i] = hexToByte(normalizedPattern[i*2], normalizedPattern[i*2+1])
+		patternBytes[i] = miner.HexToByte(normalizedPattern[i*2], normalizedPattern[i*2+1])
 	}
 
 	// Pre-calculate deployer address bytes once
@@ -197,7 +154,7 @@ func main() {
 
 	// Pre-build the CREATE2 data buffer template (only salt will change per iteration)
 	// Format: 0xff ++ deployer_address ++ salt ++ init_code_hash
-	dataTemplate := make([]byte, size)
+	dataTemplate := make([]byte, miner.DataSize)
 	dataTemplate[0] = 0xff
 	copy(dataTemplate[1:21], deployerAddressBytes[:])
 	// bytes 21-40 are for salt prefix (first 20 bytes)
@@ -220,15 +177,15 @@ func main() {
 
 // runGPUMiner runs the GPU-accelerated mining
 func runGPUMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]byte, deviceIndex int, batchSize int) {
-	miner, err := NewGPUMiner(deviceIndex, batchSize)
+	gpuMiner, err := miner.NewGPUMiner(deviceIndex, batchSize)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing GPU: %v\n", err)
 		os.Exit(1)
 	}
-	defer miner.Close()
+	defer gpuMiner.Close()
 
-	fmt.Printf("Using GPU: %s\n", miner.DeviceName())
-	fmt.Printf("Batch size: %d hashes per iteration\n", miner.BatchSize())
+	fmt.Printf("Using GPU: %s\n", gpuMiner.DeviceName())
+	fmt.Printf("Batch size: %d hashes per iteration\n", gpuMiner.BatchSize())
 	fmt.Println()
 
 	startTime := time.Now()
@@ -236,14 +193,14 @@ func runGPUMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]b
 	var nonce uint64
 
 	for {
-		result, batchTime, err := miner.Mine(dataTemplate, patternBytes, nonce)
+		result, batchTime, err := gpuMiner.Mine(dataTemplate, patternBytes, nonce)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "GPU mining error: %v\n", err)
 			os.Exit(1)
 		}
 
-		totalHashes += uint64(miner.BatchSize())
-		nonce += uint64(miner.BatchSize())
+		totalHashes += uint64(gpuMiner.BatchSize())
+		nonce += uint64(gpuMiner.BatchSize())
 
 		if result != nil {
 			// Construct the full salt
@@ -274,53 +231,11 @@ func runGPUMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]b
 
 // runCPUMiner runs the CPU-based mining with goroutines
 func runCPUMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]byte) {
-	numCores := runtime.NumCPU()
-	runtime.GOMAXPROCS(numCores)
-	numGoroutines := numCores * 800
+	cpuMiner := miner.NewCPUMiner()
 
-	fmt.Printf("Using %d CPU cores with %d goroutines\n", numCores, numGoroutines)
+	fmt.Printf("Using %d CPU cores with %d goroutines\n", cpuMiner.NumCores(), cpuMiner.NumGoroutines())
 	fmt.Println()
 
-	startTime := time.Now()
-	var found atomic.Bool
-
-	var wg sync.WaitGroup
-	for range numGoroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			data := append([]byte{}, dataTemplate...)
-			hasher := sha3.NewLegacyKeccak256()
-
-			var salt [32]byte
-			copy(salt[:20], saltPrefixBytes[:])
-
-		loop:
-			for {
-				if found.Load() {
-					return
-				}
-
-				rand.Read(salt[20:])
-				addressBytes := calculateCreate2Address(hasher, data, salt)
-
-				for i := range patternBytes {
-					if addressBytes[i] != patternBytes[i] {
-						continue loop
-					}
-				}
-
-				// Found it!
-				if found.CompareAndSwap(false, true) {
-					elapsed := time.Since(startTime)
-					fmt.Printf("\nFound!\n")
-					fmt.Printf("Salt: 0x%s\n", hex.EncodeToString(salt[:]))
-					fmt.Printf("Address: 0x%s\n", hex.EncodeToString(addressBytes[:]))
-					fmt.Printf("Time elapsed: %s\n", elapsed)
-					os.Exit(0)
-				}
-			}
-		}()
-	}
-	wg.Wait()
+	cpuMiner.Mine(dataTemplate, patternBytes, saltPrefixBytes)
+	os.Exit(0)
 }

@@ -1,4 +1,4 @@
-module github.com/hadv/pretty-ethereum-address
+module github.com/hadv/vaneth
 
 go 1.22
 

@@ -11,6 +11,8 @@ GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
 
+
+
 # Build flags for optimization
 LDFLAGS=-ldflags="-s -w"
 GCFLAGS=-gcflags="-l=4"

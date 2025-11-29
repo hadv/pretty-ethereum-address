@@ -6,7 +6,7 @@
  * GPU mining is only supported on macOS with OpenCL
  */
 
-package main
+package miner
 
 import (
 	"fmt"
@@ -15,22 +15,6 @@ import (
 
 // GPUMiner stub for non-Darwin platforms
 type GPUMiner struct{}
-
-// GPUInfo contains information about a GPU device
-type GPUInfo struct {
-	Index        int
-	Name         string
-	Vendor       string
-	ComputeUnits int
-	MaxWorkSize  int
-}
-
-// MineResult contains the result of a successful mining operation
-type MineResult struct {
-	SaltSuffix [12]byte
-	Address    [20]byte
-	Nonce      uint64
-}
 
 // ListGPUs returns an error on non-Darwin platforms
 func ListGPUs() ([]GPUInfo, error) {
@@ -56,7 +40,7 @@ func (m *GPUMiner) BatchSize() int {
 }
 
 // Mine returns an error on non-Darwin platforms
-func (m *GPUMiner) Mine(dataTemplate []byte, pattern []byte, startNonce uint64) (*MineResult, time.Duration, error) {
+func (m *GPUMiner) Mine(dataTemplate []byte, pattern []byte, startNonce uint64) (*GPUResult, time.Duration, error) {
 	return nil, 0, fmt.Errorf("GPU mining is only supported on macOS")
 }
 
