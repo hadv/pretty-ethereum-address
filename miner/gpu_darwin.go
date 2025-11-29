@@ -6,7 +6,7 @@
  * Uses OpenCL 1.2 for cross-platform GPU acceleration
  */
 
-package main
+package miner
 
 /*
 #cgo darwin LDFLAGS: -framework OpenCL
@@ -76,15 +76,6 @@ type GPUMiner struct {
 	deviceName  string
 	maxWorkSize int
 	batchSize   int
-}
-
-// GPUInfo contains information about a GPU device
-type GPUInfo struct {
-	Index        int
-	Name         string
-	Vendor       string
-	ComputeUnits int
-	MaxWorkSize  int
 }
 
 // ListGPUs returns a list of available GPU devices
@@ -311,18 +302,11 @@ func (m *GPUMiner) BatchSize() int {
 	return m.batchSize
 }
 
-// MineResult contains the result of a successful mining operation
-type MineResult struct {
-	SaltSuffix [12]byte
-	Address    [20]byte
-	Nonce      uint64
-}
-
 // Mine runs the GPU mining operation
 // dataTemplate: 85-byte CREATE2 data with salt prefix already set (bytes 21-40)
 // pattern: The address pattern to match
 // Returns the result and elapsed time, or nil if nothing found in this batch
-func (m *GPUMiner) Mine(dataTemplate []byte, pattern []byte, startNonce uint64) (*MineResult, time.Duration, error) {
+func (m *GPUMiner) Mine(dataTemplate []byte, pattern []byte, startNonce uint64) (*GPUResult, time.Duration, error) {
 	startTime := time.Now()
 
 	var errCode C.cl_int
@@ -407,7 +391,7 @@ func (m *GPUMiner) Mine(dataTemplate []byte, pattern []byte, startNonce uint64) 
 		C.clEnqueueReadBuffer(m.queue, resultAddressBuf, C.CL_TRUE, 0, 20,
 			unsafe.Pointer(&resultAddress[0]), 0, nil, nil)
 
-		result := &MineResult{}
+		result := &GPUResult{}
 		copy(result.SaltSuffix[:], resultSalt)
 		copy(result.Address[:], resultAddress)
 		result.Nonce = startNonce // Approximate - actual nonce is encoded in salt suffix
