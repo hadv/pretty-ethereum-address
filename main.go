@@ -12,7 +12,17 @@ import (
 	"github.com/hadv/vaneth/miner"
 )
 
+const logo = `
+__   _____    _   _ _____ _____ _   _
+\ \ / / _ \  | \ | | ____|_   _| | | |
+ \ V / |_| | |  \| |  _|   | | | |_| |
+  \_/|_/ \_\ |_|\__|_____| |_| |_| |_|
+
+      ⛏️  CREATE2 Vanity Miner  ⛏️
+`
+
 func main() {
+	fmt.Print(logo)
 	// Define CLI flags
 	initCodeHashStr := flag.String("init-code-hash", "", "The keccak256 hash of the init code (hex string, required)")
 	flag.StringVar(initCodeHashStr, "i", "", "The keccak256 hash of the init code (hex string, required) (shorthand)")

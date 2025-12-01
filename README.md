@@ -1,5 +1,14 @@
 # Vaneth - Ethereum Vanity Address Miner ⛏️
 
+```
+__   _____    _   _ _____ _____ _   _
+\ \ / / _ \  | \ | | ____|_   _| | | |
+ \ V / |_| | |  \| |  _|   | | | |_| |
+  \_/|_/ \_\ |_|\__|_____| |_| |_| |_|
+
+      ⛏️  CREATE2 Vanity Miner  ⛏️
+```
+
 > GPU-accelerated CREATE2 vanity address miner for Ethereum using [Solady CREATE2 Factory](https://github.com/Vectorized/solady)
 
 ## Overview
