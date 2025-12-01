@@ -28,9 +28,15 @@ build:
 	@echo "Building optimized binary..."
 	GOPROXY=https://proxy.golang.org,direct $(GOBUILD) $(LDFLAGS) $(GCFLAGS) -o $(BINARY_NAME) -v
 
-## build-gpu: Build with GPU support (macOS only, uses OpenCL)
+## build-gpu: Build with GPU support (macOS and Linux, uses OpenCL)
 build-gpu:
 	@echo "Building with GPU support..."
+ifeq ($(UNAME_S),Linux)
+	@echo "Detected Linux - using OpenCL with -lOpenCL"
+endif
+ifeq ($(UNAME_S),Darwin)
+	@echo "Detected macOS - using OpenCL framework"
+endif
 	CGO_ENABLED=1 GOPROXY=https://proxy.golang.org,direct $(GOBUILD) $(LDFLAGS) $(GCFLAGS) -o $(BINARY_NAME) -v
 
 ## build-debug: Build the binary with debug symbols
@@ -50,7 +56,7 @@ run: build
 	@echo "Running in CPU mode..."
 	./$(BINARY_NAME)
 
-## run-gpu: Build and run in GPU mode (macOS only)
+## run-gpu: Build and run in GPU mode (macOS and Linux)
 run-gpu: build-gpu
 	@echo "Running in GPU mode..."
 	./$(BINARY_NAME) --gpu
@@ -94,9 +100,19 @@ help:
 	@echo "Targets:"
 	@grep -E '^## ' Makefile | sed 's/## /  /'
 	@echo ""
-	@echo "GPU Support (macOS only):"
-	@echo "  Uses OpenCL to accelerate mining on AMD GPUs"
-	@echo "  Tested with: AMD Radeon Pro 555X"
+	@echo "GPU Support (macOS and Linux):"
+	@echo "  Uses OpenCL to accelerate mining on GPUs"
+	@echo ""
+	@echo "  macOS:"
+	@echo "    Tested with: AMD Radeon Pro 555X"
+	@echo "    Uses: -framework OpenCL"
+	@echo ""
+	@echo "  Linux:"
+	@echo "    Supports: NVIDIA RTX 3000/4000/5000 series, AMD GPUs with ROCm"
+	@echo "    Uses: -lOpenCL"
+	@echo "    Prerequisites:"
+	@echo "      sudo apt install opencl-headers ocl-icd-opencl-dev"
+	@echo "      For NVIDIA: sudo apt install nvidia-opencl-dev"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build-gpu && ./vaneth --list-gpus"

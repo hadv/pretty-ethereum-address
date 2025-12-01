@@ -1,9 +1,9 @@
-//go:build !darwin
-// +build !darwin
+//go:build !darwin && !linux
+// +build !darwin,!linux
 
 /*
- * Stub GPU Miner for non-macOS platforms
- * GPU mining is only supported on macOS with OpenCL
+ * Stub GPU Miner for unsupported platforms
+ * GPU mining is supported on macOS and Linux with OpenCL
  */
 
 package miner
@@ -16,14 +16,14 @@ import (
 // GPUMiner stub for non-Darwin platforms
 type GPUMiner struct{}
 
-// ListGPUs returns an error on non-Darwin platforms
+// ListGPUs returns an error on unsupported platforms
 func ListGPUs() ([]GPUInfo, error) {
-	return nil, fmt.Errorf("GPU mining is only supported on macOS")
+	return nil, fmt.Errorf("GPU mining is only supported on macOS and Linux")
 }
 
-// NewGPUMiner returns an error on non-Darwin platforms
+// NewGPUMiner returns an error on unsupported platforms
 func NewGPUMiner(deviceIndex int, batchSize int) (*GPUMiner, error) {
-	return nil, fmt.Errorf("GPU mining is only supported on macOS")
+	return nil, fmt.Errorf("GPU mining is only supported on macOS and Linux")
 }
 
 // Close is a no-op on non-Darwin platforms
@@ -39,8 +39,7 @@ func (m *GPUMiner) BatchSize() int {
 	return 0
 }
 
-// Mine returns an error on non-Darwin platforms
+// Mine returns an error on unsupported platforms
 func (m *GPUMiner) Mine(dataTemplate []byte, pattern []byte, startNonce uint64) (*GPUResult, time.Duration, error) {
-	return nil, 0, fmt.Errorf("GPU mining is only supported on macOS")
+	return nil, 0, fmt.Errorf("GPU mining is only supported on macOS and Linux")
 }
-

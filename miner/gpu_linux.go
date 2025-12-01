@@ -1,16 +1,17 @@
-//go:build darwin
-// +build darwin
+//go:build linux
+// +build linux
 
 /*
- * GPU Miner for macOS with OpenCL support
- * Supports any OpenCL 1.2 compatible GPU (AMD, Intel integrated, etc.)
+ * GPU Miner for Linux with OpenCL support
+ * Supports NVIDIA GPUs (RTX 3000/4000/5000 series) and AMD GPUs with ROCm/OpenCL
+ * Uses OpenCL 1.2 for cross-platform GPU acceleration
  */
 
 package miner
 
 /*
-#cgo darwin LDFLAGS: -framework OpenCL
-#include <OpenCL/opencl.h>
+#cgo linux LDFLAGS: -lOpenCL
+#include <CL/cl.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -363,7 +364,7 @@ func (m *GPUMiner) Mine(dataTemplate []byte, pattern []byte, startNonce uint64) 
 	C.clSetKernelArg(m.kernel, 6, C.size_t(unsafe.Sizeof(foundBuf)), unsafe.Pointer(&foundBuf))
 
 	// Execute kernel
-	localSize := C.size_t(256) // Common work group size, works well on most GPUs
+	localSize := C.size_t(256) // Good default for NVIDIA/AMD GPUs
 	globalSize := batchSize
 	// Round up to multiple of local size
 	if globalSize%localSize != 0 {
