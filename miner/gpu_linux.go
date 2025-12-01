@@ -11,6 +11,11 @@ package miner
 
 /*
 #cgo linux LDFLAGS: -lOpenCL
+
+// Define OpenCL version to avoid warning
+#define CL_TARGET_OPENCL_VERSION 120
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+
 #include <CL/cl.h>
 #include <stdlib.h>
 #include <string.h>
