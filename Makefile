@@ -21,7 +21,15 @@ UNAME_S := $(shell uname -s)
 # CUDA configuration
 NVCC := $(shell which nvcc 2>/dev/null)
 CUDA_PATH ?= /usr/local/cuda
-CUDA_ARCH ?= sm_50
+# Default to sm_80 (Ampere) for CUDA 12.x compatibility
+# Override with: make build-cuda CUDA_ARCH=sm_XX
+# Common architectures:
+#   sm_70 - Volta (V100)
+#   sm_75 - Turing (RTX 20xx)
+#   sm_80 - Ampere (RTX 30xx, A100)
+#   sm_89 - Ada Lovelace (RTX 40xx)
+#   sm_90 - Hopper (H100)
+CUDA_ARCH ?= sm_80
 
 # Default target
 all: build

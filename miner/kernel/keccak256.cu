@@ -9,14 +9,14 @@
 #include <stdint.h>
 
 typedef unsigned char uchar;
-typedef unsigned long long ulong;
+typedef uint64_t u64;
 
 typedef struct {
     uchar state[200];
     size_t offset;
 } Keccak256Context;
 
-__constant__ ulong roundConstants[24] = {
+__constant__ u64 roundConstants[24] = {
     0x0000000000000001ULL, 0x0000000000008082ULL,
     0x800000000000808aULL, 0x8000000080008000ULL,
     0x000000000000808bULL, 0x0000000080000001ULL,
@@ -44,24 +44,24 @@ __constant__ int piIndexes[24] = {
     12, 2, 20, 14, 22, 9, 6, 1
 };
 
-__device__ __forceinline__ ulong rotl64(ulong x, uint n) {
+__device__ __forceinline__ u64 rotl64(u64 x, uint n) {
     return (x << n) | (x >> (64 - n));
 }
 
 __device__ void keccakF1600(uchar* state) {
-    ulong state64[25];
+    u64 state64[25];
     #pragma unroll
     for (int i = 0; i < 25; ++i) {
         state64[i] = 0;
         #pragma unroll
         for (int j = 0; j < 8; ++j) {
-            state64[i] |= ((ulong)state[i * 8 + j]) << (8 * j);
+            state64[i] |= ((u64)state[i * 8 + j]) << (8 * j);
         }
     }
 
     #pragma unroll
     for (int round = 0; round < 24; ++round) {
-        ulong C[5], D[5];
+        u64 C[5], D[5];
         #pragma unroll
         for (int x = 0; x < 5; ++x)
             C[x] = state64[x] ^ state64[x + 5] ^ state64[x + 10] ^ state64[x + 15] ^ state64[x + 20];
@@ -74,18 +74,18 @@ __device__ void keccakF1600(uchar* state) {
                 state64[y + x] ^= D[x];
         }
 
-        ulong temp = state64[1];
+        u64 temp = state64[1];
         #pragma unroll
         for (int i = 0; i < 24; ++i) {
             int index = piIndexes[i];
-            ulong t = state64[index];
+            u64 t = state64[index];
             state64[index] = rotl64(temp, rhoOffsets[i]);
             temp = t;
         }
 
         #pragma unroll
         for (int y = 0; y < 25; y += 5) {
-            ulong tempVars[5];
+            u64 tempVars[5];
             #pragma unroll
             for (int x = 0; x < 5; ++x)
                 tempVars[x] = state64[y + x];
@@ -150,7 +150,7 @@ __device__ void keccak256(const uchar* input, size_t size, uchar* output) {
 }
 
 // Convert 64-bit nonce to bytes (big-endian for salt suffix)
-__device__ __forceinline__ void nonce_to_bytes(ulong nonce, uchar bytes[12]) {
+__device__ __forceinline__ void nonce_to_bytes(u64 nonce, uchar bytes[12]) {
     bytes[0] = 0;
     bytes[1] = 0;
     bytes[2] = 0;
@@ -184,7 +184,7 @@ extern "C" __global__ void mine_create2(
     const uchar *data_template,
     const uchar *pattern,
     int pattern_length,
-    ulong start_nonce,
+    u64 start_nonce,
     uchar *result_salt,
     uchar *result_address,
     int *found
@@ -195,7 +195,7 @@ extern "C" __global__ void mine_create2(
     }
 
     // Calculate this thread's nonce
-    ulong nonce = start_nonce + (ulong)(blockIdx.x * blockDim.x + threadIdx.x);
+    u64 nonce = start_nonce + (u64)(blockIdx.x * blockDim.x + threadIdx.x);
 
     // Prepare the CREATE2 data buffer (85 bytes)
     uchar data[85];

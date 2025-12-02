@@ -164,7 +164,7 @@ int cuda_miner_mine(
         ctx->d_data_template,
         ctx->d_pattern,
         pattern_length,
-        (ulong)start_nonce,
+        (u64)start_nonce,
         ctx->d_result_salt,
         ctx->d_result_address,
         ctx->d_found
