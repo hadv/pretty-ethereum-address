@@ -82,7 +82,16 @@ type CUDAMiner struct {
 // ListCUDAGPUs returns a list of available CUDA GPU devices
 func ListCUDAGPUs() ([]CUDAGPUInfo, error) {
 	count := int(C.get_cuda_device_count())
-	if count == 0 {
+	if count <= 0 {
+		// Negative values are CUDA error codes
+		if count < 0 {
+			cudaErr := -count
+			// Common CUDA errors:
+			// 35 = CUDA driver version insufficient
+			// 38 = no CUDA-capable device
+			// 100 = no device
+			return nil, fmt.Errorf("CUDA error %d: check driver compatibility (kernel driver vs CUDA toolkit)", cudaErr)
+		}
 		return nil, fmt.Errorf("no CUDA devices found")
 	}
 

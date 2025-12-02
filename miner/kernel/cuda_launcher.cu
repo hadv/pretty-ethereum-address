@@ -37,11 +37,13 @@ typedef struct {
 extern "C" {
 
 // Get number of CUDA devices
+// Returns device count on success, negative error code on failure
 int get_cuda_device_count() {
     int count = 0;
     cudaError_t err = cudaGetDeviceCount(&count);
     if (err != cudaSuccess) {
-        return 0;
+        // Return negative error code for debugging
+        return -((int)err);
     }
     return count;
 }
