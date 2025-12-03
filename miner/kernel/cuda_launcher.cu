@@ -32,6 +32,12 @@ typedef struct {
     int* d_found;
     int batch_size;
     char device_name[256];
+    // Cache for avoiding repeated copies
+    unsigned char cached_template[85];
+    unsigned char cached_pattern[20];
+    int cached_pattern_length;
+    int template_initialized;
+    int pattern_initialized;
 } CUDAMinerContext;
 
 extern "C" {
@@ -120,6 +126,13 @@ CUDAMinerContext* cuda_miner_init(int device_index, int batch_size) {
         free(ctx); return NULL;
     }
 
+    // Initialize cache flags
+    ctx->template_initialized = 0;
+    ctx->pattern_initialized = 0;
+    ctx->cached_pattern_length = 0;
+    memset(ctx->cached_template, 0, 85);
+    memset(ctx->cached_pattern, 0, 20);
+
     return ctx;
 }
 
@@ -148,17 +161,30 @@ int cuda_miner_mine(
     cudaError_t err;
     int found = 0;
 
-    // Copy input data to device
-    err = cudaMemcpy(ctx->d_data_template, data_template, 85, cudaMemcpyHostToDevice);
-    if (err != cudaSuccess) return -1;
+    // Only copy template if changed (first 41 bytes are constant, rest changes with nonce in kernel)
+    // Actually the template includes the salt prefix which is constant, so we can cache it
+    if (!ctx->template_initialized || memcmp(ctx->cached_template, data_template, 85) != 0) {
+        err = cudaMemcpy(ctx->d_data_template, data_template, 85, cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) return -1;
+        memcpy(ctx->cached_template, data_template, 85);
+        ctx->template_initialized = 1;
+    }
 
-    err = cudaMemcpy(ctx->d_pattern, pattern, pattern_length, cudaMemcpyHostToDevice);
-    if (err != cudaSuccess) return -1;
+    // Only copy pattern if changed
+    if (!ctx->pattern_initialized || ctx->cached_pattern_length != pattern_length ||
+        memcmp(ctx->cached_pattern, pattern, pattern_length) != 0) {
+        err = cudaMemcpy(ctx->d_pattern, pattern, pattern_length, cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) return -1;
+        memcpy(ctx->cached_pattern, pattern, pattern_length);
+        ctx->cached_pattern_length = pattern_length;
+        ctx->pattern_initialized = 1;
+    }
 
+    // Always reset found flag - this is cheap
     err = cudaMemcpy(ctx->d_found, &found, sizeof(int), cudaMemcpyHostToDevice);
     if (err != cudaSuccess) return -1;
 
-    // Launch kernel
+    // Launch kernel with optimized block size for modern GPUs
     int block_size = 256;
     int num_blocks = (ctx->batch_size + block_size - 1) / block_size;
 
