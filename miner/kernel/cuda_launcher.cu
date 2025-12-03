@@ -184,10 +184,9 @@ int cuda_miner_mine(
     err = cudaMemset(ctx->d_found, 0, sizeof(int));
     if (err != cudaSuccess) return -1;
 
-    // Launch kernel with optimized configuration for modern GPUs
-    // RTX 3090 has 82 SMs, each can run multiple warps (32 threads)
-    // Using 512 threads per block for better occupancy on Ampere
-    int block_size = 512;
+    // Launch kernel - 256 threads per block works best for this kernel
+    // due to high register usage in keccak256
+    int block_size = 256;
     int num_blocks = (ctx->batch_size + block_size - 1) / block_size;
 
     mine_create2<<<num_blocks, block_size>>>(
