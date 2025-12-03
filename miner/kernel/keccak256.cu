@@ -194,6 +194,20 @@ extern "C" __global__ void mine_create2(
     uchar *result_address,
     int *found
 ) {
+    // Use shared memory to cache the template - all threads in block share this
+    __shared__ uchar shared_template[85];
+    __shared__ uchar shared_pattern[20];
+
+    // First few threads load the template into shared memory
+    int tid = threadIdx.x;
+    if (tid < 85) {
+        shared_template[tid] = data_template[tid];
+    }
+    if (tid < pattern_length && tid < 20) {
+        shared_pattern[tid] = pattern[tid];
+    }
+    __syncthreads();
+
     // Check if another thread already found a result
     if (*found) {
         return;
@@ -205,13 +219,13 @@ extern "C" __global__ void mine_create2(
     // Prepare the CREATE2 data buffer (85 bytes)
     uchar data[85];
 
-    // Copy the template - don't unroll, 85 is too many
+    // Copy from shared memory (much faster than global)
+    #pragma unroll
     for (int i = 0; i < 85; i++) {
-        data[i] = data_template[i];
+        data[i] = shared_template[i];
     }
 
     // Fill in the salt suffix (bytes 41-52, which is salt bytes 20-31)
-    // data[21:53] is the salt, so data[41:53] is salt[20:32]
     uchar salt_suffix[12];
     nonce_to_bytes(nonce, salt_suffix);
     #pragma unroll
@@ -224,10 +238,10 @@ extern "C" __global__ void mine_create2(
     keccak256(data, 85, hash);
 
     // The address is the last 20 bytes of the hash (bytes 12-31)
-    // Check if it matches the pattern
+    // Check if it matches the pattern (use shared_pattern from shared memory)
     bool match = true;
     for (int i = 0; i < pattern_length; i++) {
-        if (hash[12 + i] != pattern[i]) {
+        if (hash[12 + i] != shared_pattern[i]) {
             match = false;
             break;
         }
