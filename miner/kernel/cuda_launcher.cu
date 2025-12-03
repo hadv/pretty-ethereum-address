@@ -147,10 +147,6 @@ void cuda_miner_close(CUDAMinerContext* ctx) {
     free(ctx);
 }
 
-// External constant memory symbols from keccak256.cu
-extern __constant__ unsigned char c_data_template[85];
-extern __constant__ unsigned char c_pattern[20];
-
 // Run mining operation
 // Returns: 1 if found, 0 if not found, -1 on error
 int cuda_miner_mine(
