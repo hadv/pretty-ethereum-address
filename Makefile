@@ -61,9 +61,7 @@ endif
 		-arch=$(CUDA_ARCH) \
 		-O3 \
 		--use_fast_math \
-		-Xptxas -O3 \
-		-Xcompiler -O3,-fPIC \
-		--maxrregcount=64
+		-Xcompiler -O3,-fPIC
 	cd miner/kernel && ar rcs libvaneth_cuda.a cuda_miner.o
 	@echo "CUDA library built successfully: miner/kernel/libvaneth_cuda.a"
 
