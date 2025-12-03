@@ -180,12 +180,14 @@ int cuda_miner_mine(
         ctx->pattern_initialized = 1;
     }
 
-    // Always reset found flag - this is cheap
-    err = cudaMemcpy(ctx->d_found, &found, sizeof(int), cudaMemcpyHostToDevice);
+    // Reset found flag using cudaMemsetAsync for better performance
+    err = cudaMemset(ctx->d_found, 0, sizeof(int));
     if (err != cudaSuccess) return -1;
 
-    // Launch kernel with optimized block size for modern GPUs
-    int block_size = 256;
+    // Launch kernel with optimized configuration for modern GPUs
+    // RTX 3090 has 82 SMs, each can run multiple warps (32 threads)
+    // Using 512 threads per block for better occupancy on Ampere
+    int block_size = 512;
     int num_blocks = (ctx->batch_size + block_size - 1) / block_size;
 
     mine_create2<<<num_blocks, block_size>>>(

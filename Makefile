@@ -57,7 +57,13 @@ ifndef NVCC
 endif
 	@echo "Compiling CUDA kernel library..."
 	@echo "Using CUDA architecture: $(CUDA_ARCH)"
-	cd miner/kernel && $(NVCC) -c -o cuda_miner.o cuda_launcher.cu -arch=$(CUDA_ARCH) -Xcompiler -fPIC
+	cd miner/kernel && $(NVCC) -c -o cuda_miner.o cuda_launcher.cu \
+		-arch=$(CUDA_ARCH) \
+		-O3 \
+		--use_fast_math \
+		-Xptxas -O3 \
+		-Xcompiler -O3,-fPIC \
+		--ptxas-options=-v
 	cd miner/kernel && ar rcs libvaneth_cuda.a cuda_miner.o
 	@echo "CUDA library built successfully: miner/kernel/libvaneth_cuda.a"
 
