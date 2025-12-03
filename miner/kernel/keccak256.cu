@@ -13,7 +13,7 @@ typedef uint64_t u64;
 
 typedef struct {
     uchar state[200];
-    size_t offset;
+    int offset;
 } Keccak256Context;
 
 __constant__ u64 roundConstants[24] = {
@@ -104,11 +104,11 @@ __device__ void keccak256Reset(Keccak256Context* ctx) {
     ctx->offset = 0;
 }
 
-__device__ void keccak256Update(Keccak256Context* ctx, const uchar* data, size_t len) {
-    size_t rate = 136;
+__device__ void keccak256Update(Keccak256Context* ctx, const uchar* data, int len) {
+    int rate = 136;
     while (len > 0) {
-        size_t chunk = (len < rate - ctx->offset) ? len : rate - ctx->offset;
-        for (size_t i = 0; i < chunk; ++i) {
+        int chunk = (len < rate - ctx->offset) ? len : rate - ctx->offset;
+        for (int i = 0; i < chunk; ++i) {
             ctx->state[ctx->offset + i] ^= data[i];
         }
         ctx->offset += chunk;
@@ -122,16 +122,15 @@ __device__ void keccak256Update(Keccak256Context* ctx, const uchar* data, size_t
 }
 
 __device__ void keccak256Finalize(Keccak256Context* ctx, uchar* hash) {
-    size_t rate = 136;
     ctx->state[ctx->offset] ^= 0x01;
-    ctx->state[rate - 1] ^= 0x80;
+    ctx->state[135] ^= 0x80;
     keccakF1600(ctx->state);
     for (int i = 0; i < 32; ++i) {
         hash[i] = ctx->state[i];
     }
 }
 
-__device__ void keccak256(const uchar* input, size_t size, uchar* output) {
+__device__ void keccak256(const uchar* input, int size, uchar* output) {
     Keccak256Context ctx;
     keccak256Reset(&ctx);
     keccak256Update(&ctx, input, size);
