@@ -147,6 +147,10 @@ void cuda_miner_close(CUDAMinerContext* ctx) {
     free(ctx);
 }
 
+// External constant memory symbols from keccak256.cu
+extern __constant__ unsigned char c_data_template[85];
+extern __constant__ unsigned char c_pattern[20];
+
 // Run mining operation
 // Returns: 1 if found, 0 if not found, -1 on error
 int cuda_miner_mine(
@@ -161,37 +165,33 @@ int cuda_miner_mine(
     cudaError_t err;
     int found = 0;
 
-    // Only copy template if changed (first 41 bytes are constant, rest changes with nonce in kernel)
-    // Actually the template includes the salt prefix which is constant, so we can cache it
+    // Copy template to constant memory (cached, broadcast-optimized)
     if (!ctx->template_initialized || memcmp(ctx->cached_template, data_template, 85) != 0) {
-        err = cudaMemcpy(ctx->d_data_template, data_template, 85, cudaMemcpyHostToDevice);
+        err = cudaMemcpyToSymbol(c_data_template, data_template, 85);
         if (err != cudaSuccess) return -1;
         memcpy(ctx->cached_template, data_template, 85);
         ctx->template_initialized = 1;
     }
 
-    // Only copy pattern if changed
+    // Copy pattern to constant memory
     if (!ctx->pattern_initialized || ctx->cached_pattern_length != pattern_length ||
         memcmp(ctx->cached_pattern, pattern, pattern_length) != 0) {
-        err = cudaMemcpy(ctx->d_pattern, pattern, pattern_length, cudaMemcpyHostToDevice);
+        err = cudaMemcpyToSymbol(c_pattern, pattern, pattern_length);
         if (err != cudaSuccess) return -1;
         memcpy(ctx->cached_pattern, pattern, pattern_length);
         ctx->cached_pattern_length = pattern_length;
         ctx->pattern_initialized = 1;
     }
 
-    // Reset found flag using cudaMemsetAsync for better performance
+    // Reset found flag
     err = cudaMemset(ctx->d_found, 0, sizeof(int));
     if (err != cudaSuccess) return -1;
 
-    // Launch kernel - 256 threads per block works best for this kernel
-    // due to high register usage in keccak256
+    // Launch kernel - 256 threads per block
     int block_size = 256;
     int num_blocks = (ctx->batch_size + block_size - 1) / block_size;
 
     mine_create2<<<num_blocks, block_size>>>(
-        ctx->d_data_template,
-        ctx->d_pattern,
         pattern_length,
         (u64)start_nonce,
         ctx->d_result_salt,
