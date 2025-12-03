@@ -63,7 +63,7 @@ endif
 		--use_fast_math \
 		-Xptxas -O3 \
 		-Xcompiler -O3,-fPIC \
-		--ptxas-options=-v
+		--maxrregcount=64
 	cd miner/kernel && ar rcs libvaneth_cuda.a cuda_miner.o
 	@echo "CUDA library built successfully: miner/kernel/libvaneth_cuda.a"
 

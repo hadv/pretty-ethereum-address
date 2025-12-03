@@ -50,7 +50,8 @@ __device__ __forceinline__ u64 rotl64(u64 x, uint n) {
 
 __device__ void keccakF1600(uchar* state) {
     u64 state64[25];
-    #pragma unroll
+
+    // Load state - unroll inner loop only (small)
     for (int i = 0; i < 25; ++i) {
         state64[i] = 0;
         #pragma unroll
@@ -59,9 +60,11 @@ __device__ void keccakF1600(uchar* state) {
         }
     }
 
-    #pragma unroll
+    // Don't unroll the 24 rounds - too much register pressure
     for (int round = 0; round < 24; ++round) {
         u64 C[5], D[5];
+
+        // Theta step
         #pragma unroll
         for (int x = 0; x < 5; ++x)
             C[x] = state64[x] ^ state64[x + 5] ^ state64[x + 10] ^ state64[x + 15] ^ state64[x + 20];
@@ -69,11 +72,12 @@ __device__ void keccakF1600(uchar* state) {
         #pragma unroll
         for (int x = 0; x < 5; ++x) {
             D[x] = C[(x + 4) % 5] ^ rotl64(C[(x + 1) % 5], 1);
-            #pragma unroll
+            #pragma unroll 5
             for (int y = 0; y < 25; y += 5)
                 state64[y + x] ^= D[x];
         }
 
+        // Rho and Pi steps
         u64 temp = state64[1];
         #pragma unroll
         for (int i = 0; i < 24; ++i) {
@@ -83,7 +87,7 @@ __device__ void keccakF1600(uchar* state) {
             temp = t;
         }
 
-        #pragma unroll
+        // Chi step
         for (int y = 0; y < 25; y += 5) {
             u64 tempVars[5];
             #pragma unroll
@@ -94,10 +98,11 @@ __device__ void keccakF1600(uchar* state) {
                 state64[y + x] = tempVars[x] ^ ((~tempVars[(x + 1) % 5]) & tempVars[(x + 2) % 5]);
         }
 
+        // Iota step
         state64[0] ^= roundConstants[round];
     }
 
-    #pragma unroll
+    // Store state
     for (int i = 0; i < 25; ++i) {
         #pragma unroll
         for (int j = 0; j < 8; ++j) {
@@ -107,7 +112,7 @@ __device__ void keccakF1600(uchar* state) {
 }
 
 __device__ __forceinline__ void keccak256Reset(Keccak256Context* ctx) {
-    #pragma unroll
+    // Don't unroll - 200 iterations is too many
     for (int i = 0; i < 200; ++i) {
         ctx->state[i] = 0;
     }
@@ -200,8 +205,7 @@ extern "C" __global__ void mine_create2(
     // Prepare the CREATE2 data buffer (85 bytes)
     uchar data[85];
 
-    // Copy the template
-    #pragma unroll
+    // Copy the template - don't unroll, 85 is too many
     for (int i = 0; i < 85; i++) {
         data[i] = data_template[i];
     }
