@@ -188,9 +188,9 @@ extern "C" __global__ void mine_create2(
     // Prepare the CREATE2 data buffer (85 bytes)
     uchar data[85];
 
-    // Copy the template using __ldg (texture cache)
+    // Copy the template
     for (int i = 0; i < 85; i++) {
-        data[i] = __ldg(&data_template[i]);
+        data[i] = data_template[i];
     }
 
     // Fill in the salt suffix (bytes 41-52, which is salt bytes 20-31)
@@ -205,10 +205,10 @@ extern "C" __global__ void mine_create2(
     keccak256(data, 85, hash);
 
     // The address is the last 20 bytes of the hash (bytes 12-31)
-    // Check if it matches the pattern (use __ldg for pattern)
+    // Check if it matches the pattern
     bool match = true;
     for (int i = 0; i < pattern_length; i++) {
-        if (hash[12 + i] != __ldg(&pattern[i])) {
+        if (hash[12 + i] != pattern[i]) {
             match = false;
             break;
         }
