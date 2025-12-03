@@ -44,42 +44,34 @@ __constant__ int piIndexes[24] = {
     12, 2, 20, 14, 22, 9, 6, 1
 };
 
-__device__ __forceinline__ u64 rotl64(u64 x, uint n) {
+__device__ u64 rotl64(u64 x, int n) {
     return (x << n) | (x >> (64 - n));
 }
 
-__device__ __noinline__ void keccakF1600(uchar* state) {
+__device__ void keccakF1600(uchar* state) {
     u64 state64[25];
 
-    // Load state - unroll inner loop only (small)
+    // Load state - match OpenCL exactly (no unroll)
     for (int i = 0; i < 25; ++i) {
         state64[i] = 0;
-        #pragma unroll
         for (int j = 0; j < 8; ++j) {
             state64[i] |= ((u64)state[i * 8 + j]) << (8 * j);
         }
     }
 
-    // Don't unroll the 24 rounds - too much register pressure
     for (int round = 0; round < 24; ++round) {
         u64 C[5], D[5];
 
-        // Theta step
-        #pragma unroll
         for (int x = 0; x < 5; ++x)
             C[x] = state64[x] ^ state64[x + 5] ^ state64[x + 10] ^ state64[x + 15] ^ state64[x + 20];
 
-        #pragma unroll
         for (int x = 0; x < 5; ++x) {
             D[x] = C[(x + 4) % 5] ^ rotl64(C[(x + 1) % 5], 1);
-            #pragma unroll 5
             for (int y = 0; y < 25; y += 5)
                 state64[y + x] ^= D[x];
         }
 
-        // Rho and Pi steps
         u64 temp = state64[1];
-        #pragma unroll
         for (int i = 0; i < 24; ++i) {
             int index = piIndexes[i];
             u64 t = state64[index];
@@ -87,39 +79,32 @@ __device__ __noinline__ void keccakF1600(uchar* state) {
             temp = t;
         }
 
-        // Chi step
         for (int y = 0; y < 25; y += 5) {
             u64 tempVars[5];
-            #pragma unroll
             for (int x = 0; x < 5; ++x)
                 tempVars[x] = state64[y + x];
-            #pragma unroll
             for (int x = 0; x < 5; ++x)
                 state64[y + x] = tempVars[x] ^ ((~tempVars[(x + 1) % 5]) & tempVars[(x + 2) % 5]);
         }
 
-        // Iota step
         state64[0] ^= roundConstants[round];
     }
 
-    // Store state
     for (int i = 0; i < 25; ++i) {
-        #pragma unroll
         for (int j = 0; j < 8; ++j) {
             state[i * 8 + j] = (uchar)((state64[i] >> (8 * j)) & 0xFF);
         }
     }
 }
 
-__device__ __forceinline__ void keccak256Reset(Keccak256Context* ctx) {
-    // Don't unroll - 200 iterations is too many
+__device__ void keccak256Reset(Keccak256Context* ctx) {
     for (int i = 0; i < 200; ++i) {
         ctx->state[i] = 0;
     }
     ctx->offset = 0;
 }
 
-__device__ __forceinline__ void keccak256Update(Keccak256Context* ctx, const uchar* data, size_t len) {
+__device__ void keccak256Update(Keccak256Context* ctx, const uchar* data, size_t len) {
     size_t rate = 136;
     while (len > 0) {
         size_t chunk = (len < rate - ctx->offset) ? len : rate - ctx->offset;
@@ -136,18 +121,17 @@ __device__ __forceinline__ void keccak256Update(Keccak256Context* ctx, const uch
     }
 }
 
-__device__ __forceinline__ void keccak256Finalize(Keccak256Context* ctx, uchar* hash) {
+__device__ void keccak256Finalize(Keccak256Context* ctx, uchar* hash) {
     size_t rate = 136;
     ctx->state[ctx->offset] ^= 0x01;
     ctx->state[rate - 1] ^= 0x80;
     keccakF1600(ctx->state);
-    #pragma unroll
     for (int i = 0; i < 32; ++i) {
         hash[i] = ctx->state[i];
     }
 }
 
-__device__ __forceinline__ void keccak256(const uchar* input, size_t size, uchar* output) {
+__device__ void keccak256(const uchar* input, size_t size, uchar* output) {
     Keccak256Context ctx;
     keccak256Reset(&ctx);
     keccak256Update(&ctx, input, size);
@@ -155,7 +139,7 @@ __device__ __forceinline__ void keccak256(const uchar* input, size_t size, uchar
 }
 
 // Convert 64-bit nonce to bytes (big-endian for salt suffix)
-__device__ __forceinline__ void nonce_to_bytes(u64 nonce, uchar bytes[12]) {
+__device__ void nonce_to_bytes(u64 nonce, uchar bytes[12]) {
     bytes[0] = 0;
     bytes[1] = 0;
     bytes[2] = 0;
@@ -213,7 +197,6 @@ extern "C" __global__ void mine_create2(
     // Fill in the salt suffix (bytes 41-52, which is salt bytes 20-31)
     uchar salt_suffix[12];
     nonce_to_bytes(nonce, salt_suffix);
-    #pragma unroll
     for (int i = 0; i < 12; i++) {
         data[41 + i] = salt_suffix[i];
     }
@@ -236,11 +219,9 @@ extern "C" __global__ void mine_create2(
         // Use atomicCAS for thread-safe first-match detection
         if (atomicCAS(found, 0, 1) == 0) {
             // We are the first to find a match - store the result
-            #pragma unroll
             for (int i = 0; i < 12; i++) {
                 result_salt[i] = salt_suffix[i];
             }
-            #pragma unroll
             for (int i = 0; i < 20; i++) {
                 result_address[i] = hash[12 + i];
             }
