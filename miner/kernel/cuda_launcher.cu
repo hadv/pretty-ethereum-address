@@ -161,18 +161,18 @@ int cuda_miner_mine(
     cudaError_t err;
     int found = 0;
 
-    // Copy template to constant memory (cached, broadcast-optimized)
+    // Copy template to device memory (with caching)
     if (!ctx->template_initialized || memcmp(ctx->cached_template, data_template, 85) != 0) {
-        err = cudaMemcpyToSymbol(c_data_template, data_template, 85);
+        err = cudaMemcpy(ctx->d_data_template, data_template, 85, cudaMemcpyHostToDevice);
         if (err != cudaSuccess) return -1;
         memcpy(ctx->cached_template, data_template, 85);
         ctx->template_initialized = 1;
     }
 
-    // Copy pattern to constant memory
+    // Copy pattern to device memory (with caching)
     if (!ctx->pattern_initialized || ctx->cached_pattern_length != pattern_length ||
         memcmp(ctx->cached_pattern, pattern, pattern_length) != 0) {
-        err = cudaMemcpyToSymbol(c_pattern, pattern, pattern_length);
+        err = cudaMemcpy(ctx->d_pattern, pattern, pattern_length, cudaMemcpyHostToDevice);
         if (err != cudaSuccess) return -1;
         memcpy(ctx->cached_pattern, pattern, pattern_length);
         ctx->cached_pattern_length = pattern_length;
@@ -188,6 +188,8 @@ int cuda_miner_mine(
     int num_blocks = (ctx->batch_size + block_size - 1) / block_size;
 
     mine_create2<<<num_blocks, block_size>>>(
+        ctx->d_data_template,
+        ctx->d_pattern,
         pattern_length,
         (u64)start_nonce,
         ctx->d_result_salt,

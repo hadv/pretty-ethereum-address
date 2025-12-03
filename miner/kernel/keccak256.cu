@@ -44,10 +44,6 @@ __constant__ int piIndexes[24] = {
     12, 2, 20, 14, 22, 9, 6, 1
 };
 
-// Constant memory for template and pattern - cached and broadcast-optimized
-__constant__ uchar c_data_template[85];
-__constant__ uchar c_pattern[20];
-
 __device__ __forceinline__ u64 rotl64(u64 x, uint n) {
     return (x << n) | (x >> (64 - n));
 }
@@ -190,10 +186,12 @@ __device__ __forceinline__ void nonce_to_bytes(u64 nonce, uchar bytes[12]) {
  *   found: Atomic flag - set to 1 when a match is found
  */
 extern "C" __global__ void mine_create2(
+    const uchar * __restrict__ data_template,
+    const uchar * __restrict__ pattern,
     int pattern_length,
     u64 start_nonce,
-    uchar *result_salt,
-    uchar *result_address,
+    uchar * __restrict__ result_salt,
+    uchar * __restrict__ result_address,
     int *found
 ) {
     // Check if another thread already found a result
@@ -207,10 +205,9 @@ extern "C" __global__ void mine_create2(
     // Prepare the CREATE2 data buffer (85 bytes)
     uchar data[85];
 
-    // Copy from constant memory (cached, broadcast-optimized)
-    #pragma unroll
+    // Copy the template
     for (int i = 0; i < 85; i++) {
-        data[i] = c_data_template[i];
+        data[i] = data_template[i];
     }
 
     // Fill in the salt suffix (bytes 41-52, which is salt bytes 20-31)
@@ -226,10 +223,10 @@ extern "C" __global__ void mine_create2(
     keccak256(data, 85, hash);
 
     // The address is the last 20 bytes of the hash (bytes 12-31)
-    // Check if it matches the pattern (from constant memory)
+    // Check if it matches the pattern
     bool match = true;
     for (int i = 0; i < pattern_length; i++) {
-        if (hash[12 + i] != c_pattern[i]) {
+        if (hash[12 + i] != pattern[i]) {
             match = false;
             break;
         }
