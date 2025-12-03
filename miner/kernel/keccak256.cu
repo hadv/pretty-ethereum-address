@@ -48,7 +48,7 @@ __device__ __forceinline__ u64 rotl64(u64 x, uint n) {
     return (x << n) | (x >> (64 - n));
 }
 
-__device__ void keccakF1600(uchar* state) {
+__device__ __noinline__ void keccakF1600(uchar* state) {
     u64 state64[25];
 
     // Load state - unroll inner loop only (small)
@@ -119,7 +119,7 @@ __device__ __forceinline__ void keccak256Reset(Keccak256Context* ctx) {
     ctx->offset = 0;
 }
 
-__device__ void keccak256Update(Keccak256Context* ctx, const uchar* data, size_t len) {
+__device__ __forceinline__ void keccak256Update(Keccak256Context* ctx, const uchar* data, size_t len) {
     size_t rate = 136;
     while (len > 0) {
         size_t chunk = (len < rate - ctx->offset) ? len : rate - ctx->offset;
@@ -147,7 +147,7 @@ __device__ __forceinline__ void keccak256Finalize(Keccak256Context* ctx, uchar* 
     }
 }
 
-__device__ void keccak256(const uchar* input, size_t size, uchar* output) {
+__device__ __forceinline__ void keccak256(const uchar* input, size_t size, uchar* output) {
     Keccak256Context ctx;
     keccak256Reset(&ctx);
     keccak256Update(&ctx, input, size);
@@ -194,20 +194,6 @@ extern "C" __global__ void mine_create2(
     uchar *result_address,
     int *found
 ) {
-    // Use shared memory to cache the template - all threads in block share this
-    __shared__ uchar shared_template[85];
-    __shared__ uchar shared_pattern[20];
-
-    // First few threads load the template into shared memory
-    int tid = threadIdx.x;
-    if (tid < 85) {
-        shared_template[tid] = data_template[tid];
-    }
-    if (tid < pattern_length && tid < 20) {
-        shared_pattern[tid] = pattern[tid];
-    }
-    __syncthreads();
-
     // Check if another thread already found a result
     if (*found) {
         return;
@@ -219,10 +205,9 @@ extern "C" __global__ void mine_create2(
     // Prepare the CREATE2 data buffer (85 bytes)
     uchar data[85];
 
-    // Copy from shared memory (much faster than global)
-    #pragma unroll
+    // Copy the template
     for (int i = 0; i < 85; i++) {
-        data[i] = shared_template[i];
+        data[i] = data_template[i];
     }
 
     // Fill in the salt suffix (bytes 41-52, which is salt bytes 20-31)
@@ -238,10 +223,10 @@ extern "C" __global__ void mine_create2(
     keccak256(data, 85, hash);
 
     // The address is the last 20 bytes of the hash (bytes 12-31)
-    // Check if it matches the pattern (use shared_pattern from shared memory)
+    // Check if it matches the pattern
     bool match = true;
     for (int i = 0; i < pattern_length; i++) {
-        if (hash[12 + i] != shared_pattern[i]) {
+        if (hash[12 + i] != pattern[i]) {
             match = false;
             break;
         }
