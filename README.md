@@ -24,7 +24,7 @@ address = keccak256(0xff ++ deployer_address ++ salt ++ keccak256(init_code))[12
 
 - 🚀 **Highly Optimized**: Direct byte comparison, pre-calculated values, zero allocations in hot loop
 - ⚡ **Multi-core Support**: Automatically uses all CPU cores with configurable goroutines
-- 🎮 **GPU Acceleration**: OpenCL support for AMD GPUs on macOS (10-100x faster than CPU)
+- 🎮 **GPU Acceleration**: OpenCL support on macOS/Linux, CUDA support for NVIDIA GPUs on Linux
 - 🎯 **Flexible Patterns**: Search for any hex pattern (prefix matching)
 - 🔑 **Salt Prefix Support**: Generate salts with fixed prefixes for Solady CREATE2 factory
 - ⏱️ **Performance Tracking**: Shows time elapsed when a match is found
@@ -40,7 +40,9 @@ cd vaneth
 go build
 ```
 
-### Build with GPU Support (macOS)
+### Build with GPU Support
+
+#### macOS (OpenCL)
 
 For GPU acceleration on macOS with AMD GPUs:
 
@@ -48,10 +50,68 @@ For GPU acceleration on macOS with AMD GPUs:
 make build-gpu
 ```
 
-**Requirements for GPU build:**
+**Requirements:**
 - macOS with OpenCL framework (built-in)
 - AMD GPU (e.g., Radeon Pro 555X, 560X, 5500M, etc.)
 - CGO enabled (default on macOS)
+
+#### Linux (OpenCL)
+
+For GPU acceleration on Linux using OpenCL (supports AMD, NVIDIA, and Intel GPUs):
+
+```bash
+# Install OpenCL development libraries
+# Ubuntu/Debian:
+sudo apt install opencl-headers ocl-icd-opencl-dev
+
+# For NVIDIA GPUs, also install:
+sudo apt install nvidia-opencl-dev
+
+# For AMD GPUs, install ROCm or AMDGPU-PRO drivers
+
+# Build with OpenCL support
+make build-gpu
+```
+
+**Requirements:**
+- OpenCL 1.2+ runtime and headers
+- Compatible GPU with OpenCL drivers installed
+- CGO enabled
+
+#### Linux (CUDA - NVIDIA GPUs)
+
+For native CUDA acceleration on Linux with NVIDIA GPUs (recommended for NVIDIA hardware):
+
+```bash
+# Install NVIDIA CUDA Toolkit (Ubuntu/Debian)
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+sudo apt update
+sudo apt install cuda-toolkit
+
+# Add CUDA to PATH (add to ~/.bashrc for persistence)
+export PATH=/usr/local/cuda/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+
+# Verify nvcc is available
+nvcc --version
+
+# Build with CUDA support
+make build-cuda
+```
+
+**Requirements:**
+- Linux operating system
+- NVIDIA GPU with Compute Capability 5.0+ (Maxwell architecture or newer, ~2014+)
+- NVIDIA CUDA Toolkit 11.0+
+- `nvcc` compiler in PATH
+- CGO enabled
+
+**Supported NVIDIA GPUs:**
+- GeForce GTX 750 Ti and newer
+- GeForce GTX 900/1000/1600/2000/3000/4000 series
+- Tesla K80 and newer
+- Quadro M series and newer
 
 ## Usage
 
@@ -145,24 +205,48 @@ address deployed = factory.deploy(salt, initCode);
 - Your salt prefix must match your deploying address
 - The tool optimizes by only randomizing the last 12 bytes
 
-### GPU Mode (macOS)
+### GPU Mode
 
-GPU acceleration provides significantly faster mining by leveraging OpenCL on AMD GPUs.
+GPU acceleration provides significantly faster mining compared to CPU mode.
+
+#### GPU Command-Line Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--gpu`, `-g` | Enable GPU mode | `false` |
+| `--gpu-backend` | GPU backend: `opencl`, `cuda`, or `auto` | `opencl` |
+| `--gpu-device` | GPU device index | `0` |
+| `--batch-size` | Hashes per GPU batch | `5000000` |
+| `--list-gpus` | List available GPUs and exit | - |
 
 #### List Available GPUs
 
 ```bash
+# List OpenCL GPUs (macOS/Linux)
 ./vaneth --list-gpus
+
+# List CUDA GPUs (Linux with NVIDIA)
+./vaneth --list-gpus --gpu-backend cuda
 ```
 
-Example output:
+Example output (OpenCL):
 ```
 Available GPUs:
   [0] Intel(R) UHD Graphics 630
   [1] AMD Radeon Pro 555X Compute Engine
 ```
 
-#### Run with GPU
+Example output (CUDA):
+```
+Found 1 CUDA GPU device(s):
+
+  Device 0: NVIDIA GeForce RTX 3080
+    Compute Units (SMs): 68
+    Max Threads per Block: 1024
+    Total Memory: 10240 MB
+```
+
+#### Run with OpenCL (macOS/Linux)
 
 ```bash
 ./vaneth --gpu --gpu-device 1 \
@@ -171,14 +255,25 @@ Available GPUs:
   -p 0x0000
 ```
 
-#### GPU Command-Line Options
+#### Run with CUDA (Linux with NVIDIA GPU)
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--gpu`, `-g` | Enable GPU mode | `false` |
-| `--gpu-device` | GPU device index | `0` |
-| `--batch-size` | Hashes per GPU batch | `5000000` |
-| `--list-gpus` | List available GPUs and exit | - |
+```bash
+./vaneth --gpu --gpu-backend cuda \
+  -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a \
+  -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b \
+  -p 0x0000
+```
+
+#### Auto-detect GPU Backend
+
+The `auto` backend tries CUDA first, then falls back to OpenCL:
+
+```bash
+./vaneth --gpu --gpu-backend auto \
+  -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a \
+  -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b \
+  -p 0x0000
+```
 
 #### GPU Example Output
 
@@ -272,13 +367,22 @@ The difficulty increases exponentially with pattern length:
 - ✅ Zero allocations in hot loop
 - ✅ Multi-core parallel processing
 
-### GPU Mode (macOS)
-- ✅ OpenCL 1.2 compatible (native macOS support)
+### GPU Mode (OpenCL - macOS/Linux)
+- ✅ OpenCL 1.2 compatible (native macOS support, Linux with drivers)
 - ✅ Optimized Keccak256 kernel implementation
 - ✅ Batch processing (millions of hashes per kernel launch)
 - ✅ Atomic operations for early exit on match
 - ✅ Efficient memory transfers between CPU and GPU
-- ✅ Support for both Intel and AMD GPUs
+- ✅ Support for Intel, AMD, and NVIDIA GPUs
+
+### GPU Mode (CUDA - Linux)
+- ✅ Native NVIDIA GPU support via CUDA
+- ✅ Optimized Keccak256 kernel with `__constant__` memory
+- ✅ Loop unrolling with `#pragma unroll` for performance
+- ✅ Batch processing (millions of hashes per kernel launch)
+- ✅ Atomic operations (`atomicCAS`) for thread-safe early exit
+- ✅ Efficient memory management with device memory allocation
+- ✅ Support for Compute Capability 5.0+ (Maxwell and newer)
 
 ## Use the Salt in Your Contract
 
