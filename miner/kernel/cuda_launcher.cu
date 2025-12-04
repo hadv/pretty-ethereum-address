@@ -139,6 +139,10 @@ CUDAMinerContext* cuda_miner_init(int device_index, int batch_size) {
 // Close CUDA miner and free resources
 void cuda_miner_close(CUDAMinerContext* ctx) {
     if (!ctx) return;
+    
+    // Set device to ensure we free the correct resources
+    cudaSetDevice(ctx->device_index);
+
     if (ctx->d_data_template) cudaFree(ctx->d_data_template);
     if (ctx->d_pattern) cudaFree(ctx->d_pattern);
     if (ctx->d_result_salt) cudaFree(ctx->d_result_salt);
@@ -160,6 +164,10 @@ int cuda_miner_mine(
 ) {
     cudaError_t err;
     int found = 0;
+
+    // Set device for this thread
+    err = cudaSetDevice(ctx->device_index);
+    if (err != cudaSuccess) return -1;
 
     // Copy template to device memory (with caching)
     if (!ctx->template_initialized || memcmp(ctx->cached_template, data_template, 85) != 0) {
