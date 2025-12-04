@@ -53,3 +53,28 @@ func (m *CUDAMiner) Mine(dataTemplate []byte, pattern []byte, startNonce uint64)
 	return nil, 0, fmt.Errorf("CUDA support not enabled. Build with: make build-cuda")
 }
 
+// MultiGPUMiner represents a Multi-GPU miner instance (stub)
+type MultiGPUMiner struct{}
+
+// NewMultiGPUMiner returns an error when CUDA is not available
+func NewMultiGPUMiner(deviceIDs []int, batchSize int) (*MultiGPUMiner, error) {
+	return nil, fmt.Errorf("CUDA support not enabled. Build with: make build-cuda")
+}
+
+// Close is a no-op
+func (m *MultiGPUMiner) Close() {}
+
+// DeviceNames returns empty list
+func (m *MultiGPUMiner) DeviceNames() []string {
+	return nil
+}
+
+// TotalBatchSize returns 0
+func (m *MultiGPUMiner) TotalBatchSize() int {
+	return 0
+}
+
+// Mine returns error
+func (m *MultiGPUMiner) Mine(dataTemplate []byte, pattern []byte, startNonce uint64) (*GPUResult, time.Duration, error) {
+	return nil, 0, fmt.Errorf("CUDA support not enabled. Build with: make build-cuda")
+}

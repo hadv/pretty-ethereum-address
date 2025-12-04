@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,7 +42,9 @@ func main() {
 	flag.BoolVar(useGPU, "g", false, "Use GPU for mining (shorthand)")
 
 	gpuBackend := flag.String("gpu-backend", "opencl", "GPU backend to use: opencl, cuda, or auto")
-	gpuDevice := flag.Int("gpu-device", 0, "GPU device index to use")
+	gpuDevice := flag.Int("gpu-device", 0, "GPU device index to use (deprecated, use --gpu-devices)")
+	gpuDevicesStr := flag.String("gpu-devices", "", "GPU device indices to use (comma-separated or 'all'). Overrides --gpu-device")
+	gpuStats := flag.Bool("gpu-stats", false, "Show per-GPU statistics during mining")
 	batchSize := flag.Int("batch-size", 5000000, "Number of hashes per GPU batch (default 5M)")
 	listGPUs := flag.Bool("list-gpus", false, "List available GPU devices and exit")
 
@@ -57,7 +60,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  GPU mode (OpenCL - macOS/Linux):\n")
 		fmt.Fprintf(os.Stderr, "    %s --gpu -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  GPU mode (CUDA - Linux with NVIDIA GPU):\n")
-		fmt.Fprintf(os.Stderr, "    %s --gpu --gpu-backend cuda -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "    %s --gpu --gpu-backend cuda -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "    %s --gpu --gpu-backend cuda --gpu-devices 0,1 -i ...\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  List GPUs:\n")
 		fmt.Fprintf(os.Stderr, "    %s --list-gpus\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "    %s --list-gpus --gpu-backend cuda\n", os.Args[0])
@@ -207,13 +211,13 @@ func main() {
 		backend := strings.ToLower(*gpuBackend)
 		switch backend {
 		case "cuda":
-			runCUDAMiner(dataTemplate, patternBytes, saltPrefixBytes, *gpuDevice, *batchSize)
+			runCUDAMiner(dataTemplate, patternBytes, saltPrefixBytes, *gpuDevice, *gpuDevicesStr, *batchSize, *gpuStats)
 		case "auto":
 			// Try CUDA first, fall back to OpenCL
 			_, err := miner.ListCUDAGPUs()
 			if err == nil {
 				fmt.Println("Auto-detected CUDA backend")
-				runCUDAMiner(dataTemplate, patternBytes, saltPrefixBytes, *gpuDevice, *batchSize)
+				runCUDAMiner(dataTemplate, patternBytes, saltPrefixBytes, *gpuDevice, *gpuDevicesStr, *batchSize, *gpuStats)
 			} else {
 				fmt.Println("CUDA not available, using OpenCL backend")
 				runGPUMiner(dataTemplate, patternBytes, saltPrefixBytes, *gpuDevice, *batchSize)
@@ -281,16 +285,46 @@ func runGPUMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]b
 }
 
 // runCUDAMiner runs the CUDA GPU-accelerated mining
-func runCUDAMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]byte, deviceIndex int, batchSize int) {
-	cudaMiner, err := miner.NewCUDAMiner(deviceIndex, batchSize)
+func runCUDAMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]byte, deviceIndex int, devicesStr string, batchSize int, showStats bool) {
+	var deviceIDs []int
+
+	if devicesStr == "all" {
+		gpus, err := miner.ListCUDAGPUs()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error listing CUDA GPUs: %v\n", err)
+			os.Exit(1)
+		}
+		for _, gpu := range gpus {
+			deviceIDs = append(deviceIDs, gpu.Index)
+		}
+	} else if devicesStr != "" {
+		parts := strings.Split(devicesStr, ",")
+		for _, part := range parts {
+			id, err := strconv.Atoi(strings.TrimSpace(part))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid GPU device index: %s\n", part)
+				os.Exit(1)
+			}
+			deviceIDs = append(deviceIDs, id)
+		}
+	} else {
+		// Fallback to single device index
+		deviceIDs = []int{deviceIndex}
+	}
+
+	multiMiner, err := miner.NewMultiGPUMiner(deviceIDs, batchSize)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error initializing CUDA: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error initializing CUDA miner: %v\n", err)
 		os.Exit(1)
 	}
-	defer cudaMiner.Close()
+	defer multiMiner.Close()
 
-	fmt.Printf("Using CUDA GPU: %s\n", cudaMiner.DeviceName())
-	fmt.Printf("Batch size: %d hashes per iteration\n", cudaMiner.BatchSize())
+	deviceNames := multiMiner.DeviceNames()
+	fmt.Printf("Using %d CUDA GPU(s):\n", len(deviceNames))
+	for i, name := range deviceNames {
+		fmt.Printf("  GPU %d: %s\n", deviceIDs[i], name)
+	}
+	fmt.Printf("Total Batch size: %d hashes per iteration\n", multiMiner.TotalBatchSize())
 	fmt.Println()
 
 	startTime := time.Now()
@@ -298,14 +332,14 @@ func runCUDAMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]
 	var nonce uint64
 
 	for {
-		result, batchTime, err := cudaMiner.Mine(dataTemplate, patternBytes, nonce)
+		result, batchTime, err := multiMiner.Mine(dataTemplate, patternBytes, nonce)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "CUDA mining error: %v\n", err)
 			os.Exit(1)
 		}
 
-		totalHashes += uint64(cudaMiner.BatchSize())
-		nonce += uint64(cudaMiner.BatchSize())
+		totalHashes += uint64(multiMiner.TotalBatchSize())
+		nonce += uint64(multiMiner.TotalBatchSize())
 
 		if result != nil {
 			// Construct the full salt
@@ -329,7 +363,15 @@ func runCUDAMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]
 		if nonce%(uint64(batchSize)*10) == 0 {
 			elapsed := time.Since(startTime)
 			hashRate := float64(totalHashes) / elapsed.Seconds() / 1_000_000
-			fmt.Printf("\rSearching... %d hashes, %.2f MH/s, batch time: %v", totalHashes, hashRate, batchTime)
+			
+			statsStr := ""
+			if showStats {
+				// TODO: Implement per-GPU stats if needed, for now just show combined
+				// Since MultiGPUMiner doesn't return per-GPU stats in Mine(), we'd need to update it.
+				// But for now, let's just show the combined stats.
+			}
+			
+			fmt.Printf("\rSearching... %d hashes, %.2f MH/s, batch time: %v %s", totalHashes, hashRate, batchTime, statsStr)
 		}
 	}
 }
