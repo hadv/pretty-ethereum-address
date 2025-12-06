@@ -41,6 +41,9 @@ func main() {
 	useGPU := flag.Bool("gpu", false, "Use GPU for mining")
 	flag.BoolVar(useGPU, "g", false, "Use GPU for mining (shorthand)")
 
+	// SIMD flag
+	useSIMD := flag.Bool("simd", false, "Use SIMD-optimized CPU miner (AVX2 4-way parallel Keccak)")
+
 	gpuBackend := flag.String("gpu-backend", "opencl", "GPU backend to use: opencl, cuda, or auto")
 	gpuDevice := flag.Int("gpu-device", 0, "GPU device index to use (deprecated, use --gpu-devices)")
 	gpuDevicesStr := flag.String("gpu-devices", "", "GPU device indices to use (comma-separated or 'all'). Overrides --gpu-device")
@@ -57,6 +60,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  CPU mode:\n")
 		fmt.Fprintf(os.Stderr, "    %s -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  CPU mode with SIMD (AVX2 4-way parallel, ~2x faster):\n")
+		fmt.Fprintf(os.Stderr, "    %s --simd -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  GPU mode (OpenCL - macOS/Linux):\n")
 		fmt.Fprintf(os.Stderr, "    %s --gpu -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  GPU mode (CUDA - Linux with NVIDIA GPU):\n")
@@ -226,7 +231,7 @@ func main() {
 			runGPUMiner(dataTemplate, patternBytes, saltPrefixBytes, *gpuDevice, *batchSize)
 		}
 	} else {
-		runCPUMiner(dataTemplate, patternBytes, saltPrefixBytes)
+		runCPUMiner(dataTemplate, patternBytes, saltPrefixBytes, *useSIMD)
 	}
 }
 
@@ -363,23 +368,35 @@ func runCUDAMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]
 		if nonce%(uint64(batchSize)*10) == 0 {
 			elapsed := time.Since(startTime)
 			hashRate := float64(totalHashes) / elapsed.Seconds() / 1_000_000
-			
+
 			statsStr := ""
 			if showStats {
 				// TODO: Implement per-GPU stats if needed, for now just show combined
 				// Since MultiGPUMiner doesn't return per-GPU stats in Mine(), we'd need to update it.
 				// But for now, let's just show the combined stats.
 			}
-			
+
 			fmt.Printf("\rSearching... %d hashes, %.2f MH/s, batch time: %v %s", totalHashes, hashRate, batchTime, statsStr)
 		}
 	}
 }
 
 // runCPUMiner runs the CPU-based mining with goroutines
-func runCPUMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]byte) {
-	cpuMiner := miner.NewCPUMiner()
+func runCPUMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]byte, useSIMD bool) {
+	if useSIMD {
+		simdMiner := miner.NewSIMDCPUMiner()
+		if simdMiner.IsSIMDEnabled() {
+			fmt.Printf("Using SIMD-optimized miner (AVX2 4-way parallel Keccak)\n")
+			fmt.Printf("Using %d CPU cores with %d goroutines\n", simdMiner.NumCores(), simdMiner.NumGoroutines())
+			fmt.Println()
+			simdMiner.Mine(dataTemplate, patternBytes, saltPrefixBytes)
+			os.Exit(0)
+		} else {
+			fmt.Printf("Warning: SIMD not available on this platform, falling back to standard CPU miner\n")
+		}
+	}
 
+	cpuMiner := miner.NewCPUMiner()
 	fmt.Printf("Using %d CPU cores with %d goroutines\n", cpuMiner.NumCores(), cpuMiner.NumGoroutines())
 	fmt.Println()
 

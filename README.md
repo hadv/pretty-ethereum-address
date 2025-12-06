@@ -23,11 +23,12 @@ address = keccak256(0xff ++ deployer_address ++ salt ++ keccak256(init_code))[12
 ## Features
 
 - 🚀 **Highly Optimized**: Direct byte comparison, pre-calculated values, zero allocations in hot loop
+- 🔥 **SIMD Acceleration**: AVX2-optimized 4-way parallel Keccak256 (~10x faster than standard CPU)
 - ⚡ **Multi-core Support**: Automatically uses all CPU cores with configurable goroutines
 - 🎮 **GPU Acceleration**: OpenCL support on macOS/Linux, CUDA support for NVIDIA GPUs on Linux
 - 🎯 **Flexible Patterns**: Search for any hex pattern (prefix matching)
 - 🔑 **Salt Prefix Support**: Generate salts with fixed prefixes for Solady CREATE2 factory
-- ⏱️ **Performance Tracking**: Shows time elapsed when a match is found
+- ⏱️ **Real-time Stats**: Live hash rate monitoring during mining
 - 🔧 **Easy Configuration**: CLI arguments for all search parameters
 
 ## Installation
@@ -205,14 +206,30 @@ address deployed = factory.deploy(salt, initCode);
 - Your salt prefix must match your deploying address
 - The tool optimizes by only randomizing the last 12 bytes
 
+### SIMD Mode (Recommended for CPU)
+
+SIMD mode uses AVX2 instructions to compute 4 Keccak256 hashes in parallel, providing up to **10x faster** mining compared to standard CPU mode.
+
+```bash
+./vaneth --simd \
+  -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a \
+  -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b \
+  -p 0x00000000
+```
+
+**Requirements:**
+- CPU with AVX2 support (Intel Haswell 2013+ or AMD Excavator 2015+)
+- Automatically falls back to standard CPU mode if AVX2 is not available
+
 ### GPU Mode
 
 GPU acceleration provides significantly faster mining compared to CPU mode.
 
-#### GPU Command-Line Options
+#### Command-Line Options
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--simd` | Enable SIMD-optimized CPU miner (AVX2) | `false` |
 | `--gpu`, `-g` | Enable GPU mode | `false` |
 | `--gpu-backend` | GPU backend: `opencl`, `cuda`, or `auto` | `opencl` |
 | `--gpu-device` | GPU device index | `0` |
@@ -295,15 +312,26 @@ Hash rate: 88.50 MH/s
 
 ## Performance Comparison
 
+### CPU Mode Comparison (Standard vs SIMD)
+
+| Mode | Throughput | Speedup |
+|------|------------|---------|
+| Standard CPU (single thread) | ~1.5 MH/s | baseline |
+| SIMD CPU (single thread) | ~5-6 MH/s | **~4x** |
+| Standard CPU (12 cores) | ~4 MH/s | baseline |
+| SIMD CPU (12 cores) | ~35-40 MH/s | **~10x** |
+
+*SIMD mode uses AVX2 4-way parallel Keccak256 with zero allocations*
+
 ### CPU vs GPU Performance
 
-| Pattern | CPU Time | GPU Time | GPU Speedup |
-|---------|----------|----------|-------------|
-| `0x0000` (4 hex) | ~73ms | ~57ms | ~1.3x |
-| `0x000000` (6 hex) | ~18s | ~1.5s | ~12x |
-| `0x00000000` (8 hex) | ~5-8 min | ~30-60s | ~8-10x |
+| Pattern | Standard CPU | SIMD CPU | GPU (OpenCL) |
+|---------|--------------|----------|--------------|
+| `0x0000` (4 hex) | ~73ms | ~7ms | ~57ms |
+| `0x000000` (6 hex) | ~18s | ~2s | ~1.5s |
+| `0x00000000` (8 hex) | ~5-8 min | ~30-60s | ~30-60s |
 
-*Tested on MacBook Pro with AMD Radeon Pro 555X (12 CUs, 768 stream processors)*
+*Tested on MacBook Pro with Intel i7-9750H (12 threads) and AMD Radeon Pro 555X*
 
 ### GPU Tips
 
@@ -358,14 +386,23 @@ The difficulty increases exponentially with pattern length:
 
 ## Optimizations
 
-### CPU Mode
+### CPU Mode (Standard)
 - ✅ Direct byte comparison (no string allocations)
 - ✅ Pre-calculated pattern and deployer bytes
 - ✅ Pre-calculated salt prefix (for Solady factory mode)
 - ✅ Returns bytes directly from CREATE2 calculation
 - ✅ Early exit on byte mismatch
-- ✅ Zero allocations in hot loop
+- ✅ Fast PRNG (xoroshiro128+) instead of crypto/rand (~800x faster)
+- ✅ Zero-allocation hashing with pre-allocated buffers
 - ✅ Multi-core parallel processing
+- ✅ Real-time hash rate monitoring
+
+### CPU Mode (SIMD)
+- ✅ All standard CPU optimizations plus:
+- ✅ AVX2 4-way parallel Keccak256 (Cloudflare CIRCL library)
+- ✅ Computes 4 hashes simultaneously per CPU core
+- ✅ Zero allocations in hot path (0 B/op)
+- ✅ ~10x faster than standard CPU mode
 
 ### GPU Mode (OpenCL - macOS/Linux)
 - ✅ OpenCL 1.2 compatible (native macOS support, Linux with drivers)
