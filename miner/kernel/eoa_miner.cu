@@ -6,7 +6,6 @@
  *   Private Key -> secp256k1 scalar mul -> Public Key -> Keccak256 -> Address
  */
 
-#include <stdio.h>
 #include "secp256k1.cu"
 
 // Keccak-f[1600] round constants (from keccak256.cu)
