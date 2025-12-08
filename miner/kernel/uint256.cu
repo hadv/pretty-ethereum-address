@@ -142,10 +142,9 @@ __device__ void uint256_inv_mod_p(uint256* r, const uint256* a) {
         0xFFFFFFFFFFFFFFFFULL
     };
 
-    #pragma unroll
+    // NOTE: Do NOT use #pragma unroll here - 256 iterations would hang the compiler
     for (int w = 0; w < 4; w++) {
         u64 bits = exp[w];
-        #pragma unroll
         for (int i = 0; i < 64; i++) {
             if (bits & 1) {
                 uint256_mul_mod_p(&tmp, &result, &base);

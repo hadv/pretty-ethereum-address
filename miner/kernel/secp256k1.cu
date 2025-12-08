@@ -70,7 +70,7 @@ __device__ void point_add_mixed(JacobianPoint* r, const JacobianPoint* p, const 
         return;
     }
 
-    uint256 z2, z3, u2, s2, h, hh, i, j, rr, v, tmp;
+    uint256 z2, z3, u2, s2, h, i, j, rr, v, tmp;
 
     // Z1^2 and Z1^3
     uint256_sqr_mod_p(&z2, &p->Z);             // z2 = Z1^2
@@ -155,7 +155,7 @@ __device__ void scalar_mul(JacobianPoint* r, const uint256* k, const AffinePoint
     JacobianPoint tmp;
 
     // Process from LSB to MSB
-    #pragma unroll 4
+    // NOTE: Do NOT use #pragma unroll - 256 iterations would hang the compiler
     for (int w = 0; w < 4; w++) {
         u64 bits = k->limbs[w];
         for (int i = 0; i < 64; i++) {
