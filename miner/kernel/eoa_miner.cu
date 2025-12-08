@@ -247,12 +247,10 @@ extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa_opt(
     AffinePoint G_i = generator_table[idx]; // Load precomputed i*G
     
     // R = R + G_i
-    // Note: point_add_mixed updates first arg.
-    // Result Z is stored in R.Z
-    point_add_mixed(&R, &R, &G_i);
-    // Note: point_add_mixed name in our codebase might update the first struct passed?
-    // Checking secp256k1.cu: "void point_add_mixed(JacobianPoint* r, const JacobianPoint* p, const AffinePoint* a)"
-    // It calculates r = p + a. R is passed as input 'p' and output 'r'. Correct.
+    // Note: Must use temporary to avoid aliasing issue (r and p same memory)
+    JacobianPoint result;
+    point_add_mixed(&result, &R, &G_i);
+    R = result;
 
     // --------------------------------------------------------
     // Batched Inversion of R.Z
