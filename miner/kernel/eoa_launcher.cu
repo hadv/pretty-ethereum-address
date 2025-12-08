@@ -8,6 +8,7 @@
 
 #include <cuda_runtime.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 // Include the kernel implementation
