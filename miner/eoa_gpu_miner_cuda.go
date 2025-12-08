@@ -40,6 +40,8 @@ extern int eoa_cuda_miner_mine(
     unsigned char* pattern,
     int pattern_length,
     unsigned long long start_nonce,
+    unsigned char* batch_base_pub_x,
+    unsigned char* batch_base_pub_y,
     unsigned char* result_private_key,
     unsigned char* result_address
 );
@@ -50,6 +52,8 @@ import (
 	"fmt"
 	"time"
 	"unsafe"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // EOAGPUResult contains the result of EOA mining
@@ -99,12 +103,45 @@ func (m *EOACUDAMiner) BatchSize() int {
 }
 
 // Mine runs the EOA CUDA mining operation
+// Mine runs the EOA CUDA mining operation
 func (m *EOACUDAMiner) Mine(basePrivateKey []byte, pattern []byte, startNonce uint64) (*EOAGPUResult, time.Duration, error) {
 	if len(basePrivateKey) != 32 {
 		return nil, 0, fmt.Errorf("base private key must be 32 bytes, got %d", len(basePrivateKey))
 	}
 
 	startTime := time.Now()
+
+	// Calculate start private key: priv = base + nonce
+	// Implementation of 256-bit addition (basePriv + startNonce)
+	// basePriv is 32 bytes big-endian.
+	currentPrivKey := make([]byte, 32)
+	copy(currentPrivKey, basePrivateKey)
+	
+	// Add startNonce (big-endian addition of 64-bit value to 256-bit byte array)
+	var carry uint64 = startNonce
+	for i := 31; i >= 0 && carry > 0; i-- {
+		sum := uint64(currentPrivKey[i]) + (carry & 0xFF)
+		currentPrivKey[i] = byte(sum)
+		carry = (carry >> 8) + (sum >> 8)
+	}
+
+	// Calculate Public Key for currentPrivKey uses go-ethereum/crypto
+	// We need X and Y coordinates.
+	// crypto.ToECDSA requires strict private key validity checks, but for random keys we assume valid.
+	pubKey, err := crypto.ToECDSA(currentPrivKey)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid private key derived: %v", err)
+	}
+
+	// Get X and Y as 32-byte big-endian arrays
+	pubX := pubKey.X.Bytes()
+	pubY := pubKey.Y.Bytes()
+	
+	// Pad to 32 bytes if needed (big.Int.Bytes() strips leading zeros)
+	pubXBytes := make([]byte, 32)
+	pubYBytes := make([]byte, 32)
+	copy(pubXBytes[32-len(pubX):], pubX)
+	copy(pubYBytes[32-len(pubY):], pubY)
 
 	resultPrivateKey := make([]byte, 32)
 	resultAddress := make([]byte, 20)
@@ -115,6 +152,8 @@ func (m *EOACUDAMiner) Mine(basePrivateKey []byte, pattern []byte, startNonce ui
 		(*C.uchar)(unsafe.Pointer(&pattern[0])),
 		C.int(len(pattern)),
 		C.ulonglong(startNonce),
+		(*C.uchar)(unsafe.Pointer(&pubXBytes[0])),
+		(*C.uchar)(unsafe.Pointer(&pubYBytes[0])),
 		(*C.uchar)(unsafe.Pointer(&resultPrivateKey[0])),
 		(*C.uchar)(unsafe.Pointer(&resultAddress[0])),
 	)
@@ -135,6 +174,7 @@ func (m *EOACUDAMiner) Mine(basePrivateKey []byte, pattern []byte, startNonce ui
 
 	return nil, elapsed, nil
 }
+
 
 // EOACUDAMinerAvailable returns true if CUDA EOA mining is available
 func EOACUDAMinerAvailable() bool {

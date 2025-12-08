@@ -556,8 +556,8 @@ func runEOACUDAMiner(patternBytes []byte, gpuDevice int, gpuDevicesStr string, b
 			os.Exit(0)
 		}
 
-		// Print progress every ~10 batches
-		if nonce%(uint64(batchSize)*10) == 0 {
+		// Print progress every batch
+		if nonce%uint64(batchSize) == 0 {
 			elapsed := time.Since(startTime)
 			hashRate := float64(totalHashes) / elapsed.Seconds() / 1_000_000
 			fmt.Printf("\rSearching... %d keys, %.2f MH/s, batch time: %v", totalHashes, hashRate, batchTime)

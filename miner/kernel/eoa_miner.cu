@@ -122,43 +122,78 @@ __constant__ uchar c_base_private_key[32];
 __constant__ uchar c_pattern[20];
 __constant__ int c_pattern_length;
 
-extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa(
+// ============================================================================
+// Generator Table Optimization
+// ============================================================================
+
+// Initialize generator table: table[i] = i * G
+extern "C" __global__ void init_generator_table(AffinePoint* table, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= size) return;
+
+    // k = idx
+    uint256 k;
+    k.limbs[0] = idx;
+    k.limbs[1] = 0; k.limbs[2] = 0; k.limbs[3] = 0;
+
+    AffinePoint pubkey;
+    if (idx == 0) {
+        // 0 * G = Infinity (represented as 0,0 for affine storage?)
+        // Actually, our scalar_mul handles 0 correctly returning infinity (0,1,0 Jacobian).
+        // But for affine addition, we need a special format or valid point.
+        // Let's store Infinity as x=0, y=0.
+        // But better: store 0*G as a point at infinity marker if expected,
+        // OR simply handle idx=0 specially in loop. 
+        // scalar_mul with 0 returns Jacobian Infinity (0, 1, 0).
+        // jacobian_to_affine with Infinity returns (0, 0).
+        // point_add_mixed handles Infinity correctly.
+        derive_public_key(&pubkey, &k);
+    } else {
+        derive_public_key(&pubkey, &k);
+    }
+    table[idx] = pubkey;
+}
+
+extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa_opt(
     u64 start_nonce,
-    uchar* __restrict__ result_private_key,      // 32 bytes output
-    uchar* __restrict__ result_address,          // 20 bytes output
+    uint256 batch_base_pub_x,
+    uint256 batch_base_pub_y, // Jacobian point (Z=1 assumed)
+    AffinePoint* __restrict__ generator_table,
+    uchar* __restrict__ result_private_key,
+    uchar* __restrict__ result_address,
     int* found
 ) {
-    // Early exit if already found
     if (*found) return;
 
     u64 idx = blockIdx.x * blockDim.x + threadIdx.x;
-    u64 nonce = start_nonce + idx;
+    
+    // R = BatchBase + Table[idx]
+    JacobianPoint R;
+    R.X = batch_base_pub_x;
+    R.Y = batch_base_pub_y;
+    R.Z = UINT256_ONE;
 
-    if (idx == 0) {
-       printf("DEBUG: len=%d pat=%02x %02x ...\n", c_pattern_length, c_pattern[0], c_pattern[1]);
-    }
+    AffinePoint G_i = generator_table[idx]; // Load precomputed i*G
+    
+    // R = R + G_i
+    // Note: point_add_mixed updates first arg.
+    JacobianPoint tmp_R;
+    point_add_mixed(&tmp_R, &R, &G_i);
+    
+    // Convert to Affine
+    AffinePoint P;
+    jacobian_to_affine(&P, &tmp_R);
 
-    // Load base private key and add nonce
-    uint256 privkey;
-    uint256_from_bytes_be(&privkey, c_base_private_key);
-    uint256_add_u64(&privkey, &privkey, nonce);
-
-    // Derive public key: pubkey = privkey * G
-    AffinePoint pubkey;
-    derive_public_key(&pubkey, &privkey);
-
-    // Serialize public key (64 bytes, X || Y)
+    // Serialize
     uchar pubkey_bytes[64];
-    serialize_public_key(pubkey_bytes, &pubkey);
+    serialize_public_key(pubkey_bytes, &P);
 
-    // Hash public key with Keccak256
+    // Hash
     uchar hash[32];
     keccak256_64(pubkey_bytes, hash);
-
-    // Address is last 20 bytes of hash (bytes 12-31)
     uchar* address = hash + 12;
 
-    // Check pattern match
+    // Check match
     bool match = true;
     for (int i = 0; i < c_pattern_length && match; i++) {
         if (address[i] != c_pattern[i]) {
@@ -167,15 +202,18 @@ extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa(
     }
 
     if (match) {
-        printf("DEBUG: Thread %llu found match! Address: %02x%02x%02x%02x...\n", idx, address[0], address[1], address[2], address[3]);
         if (atomicCAS(found, 0, 1) == 0) {
-            // Store result private key
-            uint256_to_bytes_be(result_private_key, &privkey);
-            // Store result address
+            // Reconstruct private key: priv = base_priv + nonce
+            uint256 priv;
+            uint256_from_bytes_be(&priv, c_base_private_key);
+            
+            u64 nonce = start_nonce + idx;
+            uint256_add_u64(&priv, &priv, nonce);
+            
+            uint256_to_bytes_be(result_private_key, &priv);
+            
             #pragma unroll
-            for (int i = 0; i < 20; i++) {
-                result_address[i] = address[i];
-            }
+            for (int i = 0; i < 20; i++) result_address[i] = address[i];
         }
     }
 }

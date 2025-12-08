@@ -20,6 +20,7 @@ typedef struct {
     unsigned char* d_result_private_key;
     unsigned char* d_result_address;
     int* d_found;
+    void* d_generator_table; // AffinePoint*
     int batch_size;
     char device_name[256];
     // Cache for avoiding repeated copies to constant memory
@@ -28,6 +29,7 @@ typedef struct {
     int cached_pattern_length;
     int privkey_initialized;
     int pattern_initialized;
+    int table_initialized;
 } EOACUDAMinerContext;
 
 extern "C" {
@@ -56,9 +58,7 @@ EOACUDAMinerContext* eoa_cuda_miner_init(int device_index, int batch_size) {
 
     // Allocate result memory
     err = cudaMalloc(&ctx->d_result_private_key, 32);
-    if (err != cudaSuccess) {
-        free(ctx); return NULL;
-    }
+    if (err != cudaSuccess) { free(ctx); return NULL; }
 
     err = cudaMalloc(&ctx->d_result_address, 20);
     if (err != cudaSuccess) {
@@ -73,10 +73,37 @@ EOACUDAMinerContext* eoa_cuda_miner_init(int device_index, int batch_size) {
         free(ctx); return NULL;
     }
 
+    // Allocate generator table (BatchSize * 64 bytes)
+    // AffinePoint is 64 bytes
+    size_t table_size = (size_t)batch_size * 64; 
+    err = cudaMalloc(&ctx->d_generator_table, table_size);
+    if (err != cudaSuccess) {
+        cudaFree(ctx->d_result_private_key);
+        cudaFree(ctx->d_result_address);
+        cudaFree(ctx->d_found);
+        free(ctx); return NULL;
+    }
+
+    // Initialize generator table
+    int block_size = 256;
+    int num_blocks = (batch_size + block_size - 1) / block_size;
+    init_generator_table<<<num_blocks, block_size>>>((AffinePoint*)ctx->d_generator_table, batch_size);
+    
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+         // Cleanup...
+         cudaFree(ctx->d_generator_table);
+         cudaFree(ctx->d_result_private_key);
+         cudaFree(ctx->d_result_address);
+         cudaFree(ctx->d_found);
+         free(ctx); return NULL;
+    }
+
     // Initialize cache flags
     ctx->privkey_initialized = 0;
     ctx->pattern_initialized = 0;
     ctx->cached_pattern_length = 0;
+    ctx->table_initialized = 1;
     memset(ctx->cached_private_key, 0, 32);
     memset(ctx->cached_pattern, 0, 20);
 
@@ -93,6 +120,7 @@ void eoa_cuda_miner_close(EOACUDAMinerContext* ctx) {
     if (ctx->d_result_private_key) cudaFree(ctx->d_result_private_key);
     if (ctx->d_result_address) cudaFree(ctx->d_result_address);
     if (ctx->d_found) cudaFree(ctx->d_found);
+    if (ctx->d_generator_table) cudaFree(ctx->d_generator_table);
     free(ctx);
 }
 
@@ -104,6 +132,8 @@ int eoa_cuda_miner_mine(
     unsigned char* pattern,
     int pattern_length,
     unsigned long long start_nonce,
+    unsigned char* batch_base_pub_x, // 32 bytes
+    unsigned char* batch_base_pub_y, // 32 bytes
     unsigned char* result_private_key,
     unsigned char* result_address
 ) {
@@ -118,8 +148,8 @@ int eoa_cuda_miner_mine(
     if (!ctx->privkey_initialized || memcmp(ctx->cached_private_key, base_private_key, 32) != 0) {
         err = cudaMemcpyToSymbol(c_base_private_key, base_private_key, 32);
         if (err != cudaSuccess) {
-            printf("CUDA error copying private key: %d (%s)\n", err, cudaGetErrorString(err));
-            return -1;
+             printf("CUDA error copying private key: %d (%s)\n", err, cudaGetErrorString(err));
+             return -1;
         }
         memcpy(ctx->cached_private_key, base_private_key, 32);
         ctx->privkey_initialized = 1;
@@ -130,15 +160,14 @@ int eoa_cuda_miner_mine(
         memcmp(ctx->cached_pattern, pattern, pattern_length) != 0) {
         err = cudaMemcpyToSymbol(c_pattern, pattern, pattern_length);
         if (err != cudaSuccess) {
-            printf("CUDA error copying pattern: %d (%s)\n", err, cudaGetErrorString(err));
-            return -1;
+             printf("CUDA error copying pattern: %d (%s)\n", err, cudaGetErrorString(err));
+             return -1;
         }
         
-        // Pass address of the constant for scalar assignment
         err = cudaMemcpyToSymbol(c_pattern_length, &pattern_length, sizeof(int));
         if (err != cudaSuccess) {
-            printf("CUDA error copying pattern length: %d (%s)\n", err, cudaGetErrorString(err));
-            return -1;
+             printf("CUDA error copying pattern length: %d (%s)\n", err, cudaGetErrorString(err));
+             return -1;
         }
 
         memcpy(ctx->cached_pattern, pattern, pattern_length);
@@ -150,12 +179,54 @@ int eoa_cuda_miner_mine(
     err = cudaMemset(ctx->d_found, 0, sizeof(int));
     if (err != cudaSuccess) return -1;
 
-    // Launch kernel - 256 threads per block (lower than CREATE2 due to higher register usage)
+    // Prepare batch base pubkey
+    uint256 pub_x, pub_y;
+    // We need a helper to load bytes to uint256 struct?
+    // Actually we can just cast if we trust endianness or use a kernel wrapper?
+    // Or copy to kernel argument.
+    // Let's use `uint256_from_bytes_be` host-side? No, that's device code.
+    // We can manually load it.
+    // Or simpler: pass bytes to kernel? No, kernel expects uint256 by value (struct of value arrays).
+    // Let's manually construct uint256 on host.
+    // Host code doesn't have `uint256` definition exposed easily (it's in .cu).
+    // But we know it's `u64 limbs[4]`. AND it's likely little-endian limbs internally for math?
+    // Wait, `uint256.cu` implementation:
+    // `uint256_from_bytes_be` loads bytes into limbs.
+    // `r->limbs[3] = ... bytes[0]...` -> MSB is in limbs[3].
+    // So distinct from simple cast if host is little endian.
+    // We should probably just pass the bytes to the kernel and let the kernel load it?
+    // But `mine_eoa_opt` signature I anticipated `uint256`.
+    // OK, let's keep `uint256` in signature but realize we have to construct it on host.
+    // OR change signature to `uchar*`.
+    
+    // Let's change `mine_eoa_opt` in `eoa_miner.cu` to accept `uint256`.
+    // And here we construct it.
+    // We need to implement `load_uint256_be` on host matching the device layout.
+    
+    uint256 h_pub_x, h_pub_y;
+    // Manual BE load to limbs
+    auto load_be = [](uint256* r, const unsigned char* bytes) {
+        for(int i=0; i<4; i++) {
+            r->limbs[3-i] = 
+                ((u64)bytes[i*8+0] << 56) | ((u64)bytes[i*8+1] << 48) |
+                ((u64)bytes[i*8+2] << 40) | ((u64)bytes[i*8+3] << 32) |
+                ((u64)bytes[i*8+4] << 24) | ((u64)bytes[i*8+5] << 16) |
+                ((u64)bytes[i*8+6] << 8)  | ((u64)bytes[i*8+7]);
+        }
+    };
+    
+    load_be(&h_pub_x, batch_base_pub_x);
+    load_be(&h_pub_y, batch_base_pub_y);
+
+    // Launch kernel - 256 threads per block
     int block_size = 256;
     int num_blocks = (ctx->batch_size + block_size - 1) / block_size;
 
-    mine_eoa<<<num_blocks, block_size>>>(
+    mine_eoa_opt<<<num_blocks, block_size>>>(
         (u64)start_nonce,
+        h_pub_x,
+        h_pub_y,
+        (AffinePoint*)ctx->d_generator_table,
         ctx->d_result_private_key,
         ctx->d_result_address,
         ctx->d_found
