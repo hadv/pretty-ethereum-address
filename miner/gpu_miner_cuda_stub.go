@@ -78,3 +78,41 @@ func (m *MultiGPUMiner) TotalBatchSize() int {
 func (m *MultiGPUMiner) Mine(dataTemplate []byte, pattern []byte, startNonce uint64) (*GPUResult, time.Duration, error) {
 	return nil, 0, fmt.Errorf("CUDA support not enabled. Build with: make build-cuda")
 }
+
+// EOAGPUResult contains the result of EOA mining (stub)
+type EOAGPUResult struct {
+	PrivateKey [32]byte
+	Address    [20]byte
+	Nonce      uint64
+}
+
+// EOACUDAMiner represents an EOA CUDA GPU miner instance (stub)
+type EOACUDAMiner struct{}
+
+// NewEOACUDAMiner returns an error when CUDA is not available
+func NewEOACUDAMiner(deviceIndex int, batchSize int) (*EOACUDAMiner, error) {
+	return nil, fmt.Errorf("CUDA EOA support not enabled. Build with: make build-cuda")
+}
+
+// Close is a no-op when CUDA is not available
+func (m *EOACUDAMiner) Close() {}
+
+// DeviceName returns empty string when CUDA is not available
+func (m *EOACUDAMiner) DeviceName() string {
+	return ""
+}
+
+// BatchSize returns 0 when CUDA is not available
+func (m *EOACUDAMiner) BatchSize() int {
+	return 0
+}
+
+// Mine returns an error when CUDA is not available
+func (m *EOACUDAMiner) Mine(basePrivateKey []byte, pattern []byte, startNonce uint64) (*EOAGPUResult, time.Duration, error) {
+	return nil, 0, fmt.Errorf("CUDA EOA support not enabled. Build with: make build-cuda")
+}
+
+// EOACUDAMinerAvailable returns false when CUDA is not available
+func EOACUDAMinerAvailable() bool {
+	return false
+}

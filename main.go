@@ -1,6 +1,7 @@
 package main
 
 import (
+	cryptoRand "crypto/rand"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -13,7 +14,7 @@ import (
 	"github.com/hadv/vaneth/miner"
 )
 
-const logo = `
+const logoCreate2 = `
 __   _____    _   _ _____ _____ _   _
 \ \ / / _ \  | \ | | ____|_   _| | | |
  \ V / |_| | |  \| |  _|   | | | |_| |
@@ -22,20 +23,31 @@ __   _____    _   _ _____ _____ _   _
       ⛏️  CREATE2 Vanity Miner  ⛏️
 `
 
+const logoEOA = `
+__   _____    _   _ _____ _____ _   _
+\ \ / / _ \  | \ | | ____|_   _| | | |
+ \ V / |_| | |  \| |  _|   | | | |_| |
+  \_/|_/ \_\ |_|\__|_____| |_| |_| |_|
+
+       ⛏️  EOA Vanity Miner  ⛏️
+`
+
 func main() {
-	fmt.Print(logo)
+	// EOA mode flag (must check early)
+	eoaMode := flag.Bool("eoa", false, "Mine EOA vanity addresses instead of CREATE2")
+
 	// Define CLI flags
-	initCodeHashStr := flag.String("init-code-hash", "", "The keccak256 hash of the init code (hex string, required)")
-	flag.StringVar(initCodeHashStr, "i", "", "The keccak256 hash of the init code (hex string, required) (shorthand)")
+	initCodeHashStr := flag.String("init-code-hash", "", "The keccak256 hash of the init code (hex string, required for CREATE2)")
+	flag.StringVar(initCodeHashStr, "i", "", "The keccak256 hash of the init code (hex string, required for CREATE2) (shorthand)")
 
 	pattern := flag.String("pattern", "0x00000000", "The address pattern/prefix to search for")
 	flag.StringVar(pattern, "p", "0x00000000", "The address pattern/prefix to search for (shorthand)")
 
-	saltPrefixStr := flag.String("salt-prefix", "", "The salt prefix address - first 20 bytes of salt (hex string, required)")
-	flag.StringVar(saltPrefixStr, "s", "", "The salt prefix address - first 20 bytes of salt (hex string, required) (shorthand)")
+	saltPrefixStr := flag.String("salt-prefix", "", "The salt prefix address - first 20 bytes of salt (hex string, required for CREATE2)")
+	flag.StringVar(saltPrefixStr, "s", "", "The salt prefix address - first 20 bytes of salt (hex string, required for CREATE2) (shorthand)")
 
-	deployerAddressStr := flag.String("deployer", "0x0000000000ffe8b47b3e2130213b802212439497", "The deployer contract address")
-	flag.StringVar(deployerAddressStr, "d", "0x0000000000ffe8b47b3e2130213b802212439497", "The deployer contract address (shorthand)")
+	deployerAddressStr := flag.String("deployer", "0x0000000000ffe8b47b3e2130213b802212439497", "The deployer contract address (CREATE2 only)")
+	flag.StringVar(deployerAddressStr, "d", "0x0000000000ffe8b47b3e2130213b802212439497", "The deployer contract address (CREATE2 only) (shorthand)")
 
 	// GPU flags
 	useGPU := flag.Bool("gpu", false, "Use GPU for mining")
@@ -54,21 +66,20 @@ func main() {
 	// Custom usage message
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "A tool to find CREATE2 salt values that produce addresses with desired prefixes.\n\n")
+		fmt.Fprintf(os.Stderr, "A tool to find vanity Ethereum addresses (CREATE2 or EOA).\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "\nCREATE2 Examples:\n")
 		fmt.Fprintf(os.Stderr, "  CPU mode:\n")
 		fmt.Fprintf(os.Stderr, "    %s -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  CPU mode with SIMD (AVX2 4-way parallel, ~2x faster):\n")
-		fmt.Fprintf(os.Stderr, "    %s --simd -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  GPU mode (OpenCL - macOS/Linux):\n")
-		fmt.Fprintf(os.Stderr, "    %s --gpu -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  GPU mode (CUDA - Linux with NVIDIA GPU):\n")
-		fmt.Fprintf(os.Stderr, "    %s --gpu --gpu-backend cuda -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "    %s --gpu --gpu-backend cuda --gpu-devices 0,1 -i ...\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  GPU mode (CUDA):\n")
+		fmt.Fprintf(os.Stderr, "    %s --gpu --gpu-backend cuda -i 747dd... -s 0x18Ee... -p 0x00000000\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "EOA Examples:\n")
+		fmt.Fprintf(os.Stderr, "  EOA mode (CUDA GPU - finds wallet address with prefix):\n")
+		fmt.Fprintf(os.Stderr, "    %s --eoa --gpu --gpu-backend cuda -p 0x00000000\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  EOA mode (multi-GPU):\n")
+		fmt.Fprintf(os.Stderr, "    %s --eoa --gpu --gpu-backend cuda --gpu-devices all -p 0x00000000\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  List GPUs:\n")
-		fmt.Fprintf(os.Stderr, "    %s --list-gpus\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "    %s --list-gpus --gpu-backend cuda\n", os.Args[0])
 	}
 
@@ -116,15 +127,25 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Validate required flags
+	// Handle EOA mode
+	if *eoaMode {
+		fmt.Print(logoEOA)
+		runEOAMode(*pattern, *useGPU, *gpuBackend, *gpuDevice, *gpuDevicesStr, *batchSize, *gpuStats)
+		os.Exit(0)
+	}
+
+	// CREATE2 mode - print logo and validate required flags
+	fmt.Print(logoCreate2)
+
+	// Validate required flags for CREATE2
 	if *initCodeHashStr == "" {
-		fmt.Fprintln(os.Stderr, "Error: --init-code-hash (-i) is required")
+		fmt.Fprintln(os.Stderr, "Error: --init-code-hash (-i) is required for CREATE2 mode")
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	if *saltPrefixStr == "" {
-		fmt.Fprintln(os.Stderr, "Error: --salt-prefix (-s) is required")
+		fmt.Fprintln(os.Stderr, "Error: --salt-prefix (-s) is required for CREATE2 mode")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -402,4 +423,149 @@ func runCPUMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]b
 
 	cpuMiner.Mine(dataTemplate, patternBytes, saltPrefixBytes)
 	os.Exit(0)
+}
+
+// runEOAMode handles EOA vanity address mining
+func runEOAMode(pattern string, useGPU bool, gpuBackend string, gpuDevice int, gpuDevicesStr string, batchSize int, gpuStats bool) {
+	// Validate pattern
+	normalizedPattern := strings.TrimPrefix(strings.ToLower(pattern), "0x")
+	if len(normalizedPattern)%2 != 0 {
+		fmt.Fprintln(os.Stderr, "Error: --pattern must have an even number of hex characters")
+		os.Exit(1)
+	}
+	if len(normalizedPattern) > 40 {
+		fmt.Fprintln(os.Stderr, "Error: --pattern cannot be longer than 40 hex characters (20 bytes)")
+		os.Exit(1)
+	}
+	for _, c := range normalizedPattern {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			fmt.Fprintln(os.Stderr, "Error: --pattern contains invalid hex characters")
+			os.Exit(1)
+		}
+	}
+
+	// Convert pattern to bytes
+	patternBytes := make([]byte, len(normalizedPattern)/2)
+	for i := 0; i < len(normalizedPattern)/2; i++ {
+		patternBytes[i] = miner.HexToByte(normalizedPattern[i*2], normalizedPattern[i*2+1])
+	}
+
+	fmt.Printf("Mode: EOA (Externally Owned Account)\n")
+	fmt.Printf("Searching for EOA address starting with '%s'...\n", pattern)
+	fmt.Println()
+
+	if !useGPU {
+		fmt.Fprintln(os.Stderr, "Error: EOA mining currently requires GPU mode (--gpu --gpu-backend cuda)")
+		fmt.Fprintln(os.Stderr, "CPU EOA mining is not yet implemented.")
+		os.Exit(1)
+	}
+
+	backend := strings.ToLower(gpuBackend)
+	if backend != "cuda" {
+		fmt.Fprintln(os.Stderr, "Error: EOA mining currently only supports CUDA backend")
+		fmt.Fprintln(os.Stderr, "Use: --gpu --gpu-backend cuda")
+		os.Exit(1)
+	}
+
+	runEOACUDAMiner(patternBytes, gpuDevice, gpuDevicesStr, batchSize, gpuStats)
+}
+
+// runEOACUDAMiner runs the CUDA-accelerated EOA mining
+func runEOACUDAMiner(patternBytes []byte, gpuDevice int, gpuDevicesStr string, batchSize int, gpuStats bool) {
+	// gpuStats will be used in Phase 4 for per-GPU statistics
+	_ = gpuStats
+
+	var deviceIDs []int
+
+	if gpuDevicesStr == "all" {
+		gpus, err := miner.ListCUDAGPUs()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error listing CUDA GPUs: %v\n", err)
+			os.Exit(1)
+		}
+		for _, gpu := range gpus {
+			deviceIDs = append(deviceIDs, gpu.Index)
+		}
+	} else if gpuDevicesStr != "" {
+		parts := strings.Split(gpuDevicesStr, ",")
+		for _, part := range parts {
+			id, err := strconv.Atoi(strings.TrimSpace(part))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid GPU device index: %s\n", part)
+				os.Exit(1)
+			}
+			deviceIDs = append(deviceIDs, id)
+		}
+	} else {
+		deviceIDs = []int{gpuDevice}
+	}
+
+	// For now, use single GPU EOA miner (multi-GPU EOA will be Phase 4)
+	if len(deviceIDs) > 1 {
+		fmt.Println("Note: Multi-GPU EOA mining uses the first GPU only (multi-GPU coming in Phase 4)")
+	}
+
+	eoaMiner, err := miner.NewEOACUDAMiner(deviceIDs[0], batchSize)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing EOA CUDA miner: %v\n", err)
+		os.Exit(1)
+	}
+	defer eoaMiner.Close()
+
+	fmt.Printf("Using GPU: %s\n", eoaMiner.DeviceName())
+	fmt.Printf("Batch size: %d keys per iteration\n", eoaMiner.BatchSize())
+	fmt.Println()
+
+	// Generate random base private key
+	basePrivateKey := make([]byte, 32)
+	if _, err := cryptoRandRead(basePrivateKey); err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating random private key: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("⚠️  SECURITY WARNING: Private keys will be displayed. Keep them secret!")
+	fmt.Println()
+
+	startTime := time.Now()
+	var totalHashes uint64
+	var nonce uint64
+
+	for {
+		result, batchTime, err := eoaMiner.Mine(basePrivateKey, patternBytes, nonce)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "EOA CUDA mining error: %v\n", err)
+			os.Exit(1)
+		}
+
+		totalHashes += uint64(eoaMiner.BatchSize())
+		nonce += uint64(eoaMiner.BatchSize())
+
+		if result != nil {
+			elapsed := time.Since(startTime)
+			hashRate := float64(totalHashes) / elapsed.Seconds() / 1_000_000
+
+			fmt.Printf("\n✅ Found EOA Vanity Address!\n\n")
+			fmt.Printf("📍 Address:     0x%s\n", hex.EncodeToString(result.Address[:]))
+			fmt.Printf("🔑 Private Key: 0x%s\n", hex.EncodeToString(result.PrivateKey[:]))
+			fmt.Println()
+			fmt.Printf("⚠️  Store your private key securely! Never share it with anyone.\n")
+			fmt.Println()
+			fmt.Printf("Time elapsed: %s\n", elapsed)
+			fmt.Printf("Total keys checked: %d\n", totalHashes)
+			fmt.Printf("Hash rate: %.2f MH/s\n", hashRate)
+			os.Exit(0)
+		}
+
+		// Print progress every ~10 batches
+		if nonce%(uint64(batchSize)*10) == 0 {
+			elapsed := time.Since(startTime)
+			hashRate := float64(totalHashes) / elapsed.Seconds() / 1_000_000
+			fmt.Printf("\rSearching... %d keys, %.2f MH/s, batch time: %v", totalHashes, hashRate, batchTime)
+		}
+	}
+}
+
+// cryptoRandRead reads random bytes using crypto/rand
+func cryptoRandRead(b []byte) (int, error) {
+	return cryptoRand.Read(b)
 }

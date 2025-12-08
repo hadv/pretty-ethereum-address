@@ -1,4 +1,4 @@
-.PHONY: build build-gpu build-cuda build-cuda-lib clean run run-gpu run-cuda install test help list-gpus
+.PHONY: build build-gpu build-cuda build-cuda-lib build-eoa-cuda-lib clean run run-gpu run-cuda install test help list-gpus
 
 # Binary name
 BINARY_NAME=vaneth
@@ -55,7 +55,7 @@ build-cuda-lib:
 ifndef NVCC
 	$(error "nvcc not found. Please install CUDA Toolkit 11.0+ and ensure nvcc is in PATH")
 endif
-	@echo "Compiling CUDA kernel library..."
+	@echo "Compiling CUDA kernel library (CREATE2)..."
 	@echo "Using CUDA architecture: $(CUDA_ARCH)"
 	cd miner/kernel && $(NVCC) -c -o cuda_miner.o cuda_launcher.cu \
 		-arch=$(CUDA_ARCH) \
@@ -65,8 +65,23 @@ endif
 	cd miner/kernel && ar rcs libvaneth_cuda.a cuda_miner.o
 	@echo "CUDA library built successfully: miner/kernel/libvaneth_cuda.a"
 
+## build-eoa-cuda-lib: Compile the EOA CUDA kernel library
+build-eoa-cuda-lib:
+ifndef NVCC
+	$(error "nvcc not found. Please install CUDA Toolkit 11.0+ and ensure nvcc is in PATH")
+endif
+	@echo "Compiling EOA CUDA kernel library..."
+	@echo "Using CUDA architecture: $(CUDA_ARCH)"
+	cd miner/kernel && $(NVCC) -c -o eoa_miner.o eoa_launcher.cu \
+		-arch=$(CUDA_ARCH) \
+		-O3 \
+		--use_fast_math \
+		-Xcompiler -O3,-fPIC
+	cd miner/kernel && ar rcs libvaneth_eoa_cuda.a eoa_miner.o
+	@echo "EOA CUDA library built successfully: miner/kernel/libvaneth_eoa_cuda.a"
+
 ## build-cuda: Build with CUDA support for NVIDIA GPUs (Linux only)
-build-cuda: build-cuda-lib
+build-cuda: build-cuda-lib build-eoa-cuda-lib
 	@echo "Building with CUDA support..."
 ifeq ($(UNAME_S),Linux)
 	CGO_ENABLED=1 GOPROXY=https://proxy.golang.org,direct $(GOBUILD) -tags cuda $(LDFLAGS) $(GCFLAGS) -o $(BINARY_NAME) -v
