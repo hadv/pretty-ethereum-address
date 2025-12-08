@@ -117,11 +117,9 @@ __device__ __forceinline__ void keccak256_64(const uchar* input, uchar* output) 
 
 // Constant memory for input data (read-only, same for all threads)
 // Constant memory for input data (read-only, same for all threads)
-extern "C" {
-    __constant__ uchar c_base_private_key[32];
-    __constant__ uchar c_pattern[20];
-    __constant__ int c_pattern_length;
-}
+__constant__ uchar c_base_private_key[32];
+__constant__ uchar c_pattern[20];
+__constant__ int c_pattern_length;
 
 extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa(
     u64 start_nonce,

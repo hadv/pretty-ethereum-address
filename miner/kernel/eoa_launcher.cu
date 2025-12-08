@@ -115,8 +115,11 @@ int eoa_cuda_miner_mine(
 
     // Copy private key to constant memory (with caching)
     if (!ctx->privkey_initialized || memcmp(ctx->cached_private_key, base_private_key, 32) != 0) {
-        err = cudaMemcpyToSymbol("c_base_private_key", base_private_key, 32);
-        if (err != cudaSuccess) return -1;
+        err = cudaMemcpyToSymbol(c_base_private_key, base_private_key, 32);
+        if (err != cudaSuccess) {
+            printf("CUDA error copying private key: %d (%s)\n", err, cudaGetErrorString(err));
+            return -1;
+        }
         memcpy(ctx->cached_private_key, base_private_key, 32);
         ctx->privkey_initialized = 1;
     }
@@ -124,11 +127,18 @@ int eoa_cuda_miner_mine(
     // Copy pattern to constant memory (with caching)
     if (!ctx->pattern_initialized || ctx->cached_pattern_length != pattern_length ||
         memcmp(ctx->cached_pattern, pattern, pattern_length) != 0) {
-        err = cudaMemcpyToSymbol("c_pattern", pattern, pattern_length);
-        if (err != cudaSuccess) return -1;
+        err = cudaMemcpyToSymbol(c_pattern, pattern, pattern_length);
+        if (err != cudaSuccess) {
+            printf("CUDA error copying pattern: %d (%s)\n", err, cudaGetErrorString(err));
+            return -1;
+        }
         
-        err = cudaMemcpyToSymbol("c_pattern_length", &pattern_length, sizeof(int));
-        if (err != cudaSuccess) return -1;
+        // Pass address of the constant for scalar assignment
+        err = cudaMemcpyToSymbol(c_pattern_length, &pattern_length, sizeof(int));
+        if (err != cudaSuccess) {
+            printf("CUDA error copying pattern length: %d (%s)\n", err, cudaGetErrorString(err));
+            return -1;
+        }
 
         memcpy(ctx->cached_pattern, pattern, pattern_length);
         ctx->cached_pattern_length = pattern_length;
