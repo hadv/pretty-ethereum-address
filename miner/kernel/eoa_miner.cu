@@ -6,6 +6,7 @@
  *   Private Key -> secp256k1 scalar mul -> Public Key -> Keccak256 -> Address
  */
 
+#include <stdio.h>
 #include "secp256k1.cu"
 
 // Keccak-f[1600] round constants (from keccak256.cu)
@@ -132,6 +133,10 @@ extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa(
 
     u64 idx = blockIdx.x * blockDim.x + threadIdx.x;
     u64 nonce = start_nonce + idx;
+
+    if (idx == 0) {
+       printf("DEBUG: len=%d pat=%02x %02x ...\n", c_pattern_length, c_pattern[0], c_pattern[1]);
+    }
 
     // Load base private key and add nonce
     uint256 privkey;
