@@ -167,6 +167,7 @@ extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa(
     }
 
     if (match) {
+        printf("DEBUG: Thread %llu found match! Address: %02x%02x%02x%02x...\n", idx, address[0], address[1], address[2], address[3]);
         if (atomicCAS(found, 0, 1) == 0) {
             // Store result private key
             uint256_to_bytes_be(result_private_key, &privkey);
