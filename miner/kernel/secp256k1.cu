@@ -11,7 +11,7 @@
 // Using standard Jacobian doubling formulas
 // ============================================================================
 
-__device__ void point_double_jacobian(JacobianPoint* r, const JacobianPoint* p) {
+__device__ __noinline__ void point_double_jacobian(JacobianPoint* r, const JacobianPoint* p) {
     // Handle point at infinity
     if (jacobian_is_infinity(p)) {
         *r = *p;
@@ -61,7 +61,7 @@ __device__ void point_double_jacobian(JacobianPoint* r, const JacobianPoint* p) 
 // More efficient than full Jacobian addition
 // ============================================================================
 
-__device__ void point_add_mixed(JacobianPoint* r, const JacobianPoint* p, const AffinePoint* q) {
+__device__ __noinline__ void point_add_mixed(JacobianPoint* r, const JacobianPoint* p, const AffinePoint* q) {
     // Handle special cases
     if (jacobian_is_infinity(p)) {
         r->X = q->x;
@@ -138,7 +138,7 @@ __device__ void point_add_mixed(JacobianPoint* r, const JacobianPoint* p, const 
 // Scalar Multiplication: R = k * P (double-and-add)
 // ============================================================================
 
-__device__ void scalar_mul(JacobianPoint* r, const uint256* k, const AffinePoint* p) {
+__device__ __noinline__ void scalar_mul(JacobianPoint* r, const uint256* k, const AffinePoint* p) {
     // Start with point at infinity
     r->X = UINT256_ZERO;
     r->Y = UINT256_ONE;
@@ -178,7 +178,7 @@ __device__ void scalar_mul(JacobianPoint* r, const uint256* k, const AffinePoint
 // Jacobian to Affine Conversion
 // ============================================================================
 
-__device__ void jacobian_to_affine(AffinePoint* r, const JacobianPoint* p) {
+__device__ __noinline__ void jacobian_to_affine(AffinePoint* r, const JacobianPoint* p) {
     // Handle point at infinity
     if (jacobian_is_infinity(p)) {
         r->x = UINT256_ZERO;

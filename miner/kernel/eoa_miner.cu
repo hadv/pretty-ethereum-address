@@ -115,10 +115,15 @@ __device__ __forceinline__ void keccak256_64(const uchar* input, uchar* output) 
 // EOA Mining Kernel
 // ============================================================================
 
-extern "C" __global__ void mine_eoa(
-    const uchar* __restrict__ base_private_key,  // 32 bytes
-    const uchar* __restrict__ pattern,           // Pattern to match (prefix)
-    int pattern_length,
+// Constant memory for input data (read-only, same for all threads)
+// Constant memory for input data (read-only, same for all threads)
+extern "C" {
+    __constant__ uchar c_base_private_key[32];
+    __constant__ uchar c_pattern[20];
+    __constant__ int c_pattern_length;
+}
+
+extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa(
     u64 start_nonce,
     uchar* __restrict__ result_private_key,      // 32 bytes output
     uchar* __restrict__ result_address,          // 20 bytes output
@@ -132,7 +137,7 @@ extern "C" __global__ void mine_eoa(
 
     // Load base private key and add nonce
     uint256 privkey;
-    uint256_from_bytes_be(&privkey, base_private_key);
+    uint256_from_bytes_be(&privkey, c_base_private_key);
     uint256_add_u64(&privkey, &privkey, nonce);
 
     // Derive public key: pubkey = privkey * G
@@ -152,8 +157,8 @@ extern "C" __global__ void mine_eoa(
 
     // Check pattern match
     bool match = true;
-    for (int i = 0; i < pattern_length && match; i++) {
-        if (address[i] != pattern[i]) {
+    for (int i = 0; i < c_pattern_length && match; i++) {
+        if (address[i] != c_pattern[i]) {
             match = false;
         }
     }

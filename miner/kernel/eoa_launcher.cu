@@ -16,14 +16,12 @@
 // EOA CUDA miner context
 typedef struct {
     int device_index;
-    unsigned char* d_base_private_key;
-    unsigned char* d_pattern;
     unsigned char* d_result_private_key;
     unsigned char* d_result_address;
     int* d_found;
     int batch_size;
     char device_name[256];
-    // Cache for avoiding repeated copies
+    // Cache for avoiding repeated copies to constant memory
     unsigned char cached_private_key[32];
     unsigned char cached_pattern[20];
     int cached_pattern_length;
@@ -55,35 +53,20 @@ EOACUDAMinerContext* eoa_cuda_miner_init(int device_index, int batch_size) {
     strncpy(ctx->device_name, prop.name, 255);
     ctx->device_name[255] = '\0';
 
-    // Allocate device memory
-    err = cudaMalloc(&ctx->d_base_private_key, 32);
-    if (err != cudaSuccess) { free(ctx); return NULL; }
-
-    err = cudaMalloc(&ctx->d_pattern, 20);
-    if (err != cudaSuccess) {
-        cudaFree(ctx->d_base_private_key);
-        free(ctx); return NULL;
-    }
-
+    // Allocate result memory
     err = cudaMalloc(&ctx->d_result_private_key, 32);
     if (err != cudaSuccess) {
-        cudaFree(ctx->d_base_private_key);
-        cudaFree(ctx->d_pattern);
         free(ctx); return NULL;
     }
 
     err = cudaMalloc(&ctx->d_result_address, 20);
     if (err != cudaSuccess) {
-        cudaFree(ctx->d_base_private_key);
-        cudaFree(ctx->d_pattern);
         cudaFree(ctx->d_result_private_key);
         free(ctx); return NULL;
     }
 
     err = cudaMalloc(&ctx->d_found, sizeof(int));
     if (err != cudaSuccess) {
-        cudaFree(ctx->d_base_private_key);
-        cudaFree(ctx->d_pattern);
         cudaFree(ctx->d_result_private_key);
         cudaFree(ctx->d_result_address);
         free(ctx); return NULL;
@@ -106,8 +89,6 @@ void eoa_cuda_miner_close(EOACUDAMinerContext* ctx) {
     // Set device to ensure we free the correct resources
     cudaSetDevice(ctx->device_index);
 
-    if (ctx->d_base_private_key) cudaFree(ctx->d_base_private_key);
-    if (ctx->d_pattern) cudaFree(ctx->d_pattern);
     if (ctx->d_result_private_key) cudaFree(ctx->d_result_private_key);
     if (ctx->d_result_address) cudaFree(ctx->d_result_address);
     if (ctx->d_found) cudaFree(ctx->d_found);
@@ -132,19 +113,23 @@ int eoa_cuda_miner_mine(
     err = cudaSetDevice(ctx->device_index);
     if (err != cudaSuccess) return -1;
 
-    // Copy private key to device (with caching)
+    // Copy private key to constant memory (with caching)
     if (!ctx->privkey_initialized || memcmp(ctx->cached_private_key, base_private_key, 32) != 0) {
-        err = cudaMemcpy(ctx->d_base_private_key, base_private_key, 32, cudaMemcpyHostToDevice);
+        err = cudaMemcpyToSymbol("c_base_private_key", base_private_key, 32);
         if (err != cudaSuccess) return -1;
         memcpy(ctx->cached_private_key, base_private_key, 32);
         ctx->privkey_initialized = 1;
     }
 
-    // Copy pattern to device (with caching)
+    // Copy pattern to constant memory (with caching)
     if (!ctx->pattern_initialized || ctx->cached_pattern_length != pattern_length ||
         memcmp(ctx->cached_pattern, pattern, pattern_length) != 0) {
-        err = cudaMemcpy(ctx->d_pattern, pattern, pattern_length, cudaMemcpyHostToDevice);
+        err = cudaMemcpyToSymbol("c_pattern", pattern, pattern_length);
         if (err != cudaSuccess) return -1;
+        
+        err = cudaMemcpyToSymbol("c_pattern_length", &pattern_length, sizeof(int));
+        if (err != cudaSuccess) return -1;
+
         memcpy(ctx->cached_pattern, pattern, pattern_length);
         ctx->cached_pattern_length = pattern_length;
         ctx->pattern_initialized = 1;
@@ -159,9 +144,6 @@ int eoa_cuda_miner_mine(
     int num_blocks = (ctx->batch_size + block_size - 1) / block_size;
 
     mine_eoa<<<num_blocks, block_size>>>(
-        ctx->d_base_private_key,
-        ctx->d_pattern,
-        pattern_length,
         (u64)start_nonce,
         ctx->d_result_private_key,
         ctx->d_result_address,

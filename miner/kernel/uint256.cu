@@ -18,7 +18,7 @@ typedef struct {
 // ============================================================================
 
 // Multiply two 256-bit numbers to get 512-bit result
-__device__ __forceinline__ void uint256_mul_full(uint512* r, const uint256* a, const uint256* b) {
+__device__ __noinline__ void uint256_mul_full(uint512* r, const uint256* a, const uint256* b) {
     u128 prod;
     u64 carry;
 
@@ -49,7 +49,7 @@ __device__ __forceinline__ void uint256_mul_full(uint512* r, const uint256* a, c
 // Reduce 512-bit number modulo secp256k1 prime p
 // p = 2^256 - 2^32 - 977
 // Uses: a mod p = a_low + a_high * (2^32 + 977)
-__device__ void uint512_reduce_p(uint256* r, const uint512* a) {
+__device__ __noinline__ void uint512_reduce_p(uint256* r, const uint512* a) {
     // Split into low 256 bits and high 256 bits
     uint256 low, high;
     #pragma unroll
@@ -111,14 +111,14 @@ __device__ void uint512_reduce_p(uint256* r, const uint512* a) {
 // ============================================================================
 
 // Modular multiplication: r = (a * b) mod p
-__device__ void uint256_mul_mod_p(uint256* r, const uint256* a, const uint256* b) {
+__device__ __noinline__ void uint256_mul_mod_p(uint256* r, const uint256* a, const uint256* b) {
     uint512 product;
     uint256_mul_full(&product, a, b);
     uint512_reduce_p(r, &product);
 }
 
 // Modular squaring: r = (a * a) mod p (slightly faster than mul)
-__device__ void uint256_sqr_mod_p(uint256* r, const uint256* a) {
+__device__ __noinline__ void uint256_sqr_mod_p(uint256* r, const uint256* a) {
     uint256_mul_mod_p(r, a, a);
 }
 
@@ -128,7 +128,7 @@ __device__ void uint256_sqr_mod_p(uint256* r, const uint256* a) {
 
 // a^(-1) mod p = a^(p-2) mod p
 // p-2 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2D
-__device__ void uint256_inv_mod_p(uint256* r, const uint256* a) {
+__device__ __noinline__ void uint256_inv_mod_p(uint256* r, const uint256* a) {
     // Use square-and-multiply for a^(p-2)
     uint256 base = *a;
     uint256 result = UINT256_ONE;
