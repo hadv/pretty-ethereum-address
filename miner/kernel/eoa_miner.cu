@@ -116,10 +116,11 @@ __device__ __forceinline__ void keccak256_64(const uchar* input, uchar* output) 
 // ============================================================================
 
 // Constant memory for input data (read-only, same for all threads)
-// Constant memory for input data (read-only, same for all threads)
 __constant__ uchar c_base_private_key[32];
 __constant__ uchar c_pattern[20];
 __constant__ int c_pattern_length;
+__constant__ uchar c_batch_base_pub_x[32];
+__constant__ uchar c_batch_base_pub_y[32];
 
 // ============================================================================
 // Generator Table Optimization
@@ -215,8 +216,6 @@ __device__ uint256 block_scan_suffix_mul(uint256 val, uint256* buffer) {
 
 extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa_opt(
     u64 start_nonce,
-    uint256 batch_base_pub_x,
-    uint256 batch_base_pub_y, // Jacobian point (Z=1 assumed)
     AffinePoint* __restrict__ generator_table,
     uchar* __restrict__ result_private_key,
     uchar* __restrict__ result_address,
@@ -225,6 +224,11 @@ extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa_opt(
     if (*found) return;
 
     u64 idx = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // Load batch base public key from constant memory
+    uint256 batch_base_pub_x, batch_base_pub_y;
+    uint256_from_bytes_be(&batch_base_pub_x, c_batch_base_pub_x);
+    uint256_from_bytes_be(&batch_base_pub_y, c_batch_base_pub_y);
     
     // R = BatchBase + Table[idx]
     JacobianPoint R;
@@ -252,15 +256,7 @@ extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa_opt(
     // Convert to Affine (using standard per-thread inversion for debugging)
     // --------------------------------------------------------
     AffinePoint P;
-    
-    // DEBUG: For idx=0, skip jacobian_to_affine and directly use the input
-    // to verify the input bytes are correct
-    if (idx == 0) {
-        P.x = batch_base_pub_x;
-        P.y = batch_base_pub_y;
-    } else {
-        jacobian_to_affine(&P, &R);
-    }
+    jacobian_to_affine(&P, &R);
 
     // Serialize
     uchar pubkey_bytes[64];

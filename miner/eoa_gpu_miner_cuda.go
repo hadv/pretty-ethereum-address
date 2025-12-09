@@ -141,10 +141,6 @@ func (m *EOACUDAMiner) Mine(basePrivateKey []byte, pattern []byte, startNonce ui
 	copy(pubXBytes[32-len(pubX):], pubX)
 	copy(pubYBytes[32-len(pubY):], pubY)
 	
-	// DEBUG: Print first 8 bytes of pubkey to verify what we're sending
-	fmt.Printf("DEBUG: PubX[0:8] = %x\n", pubXBytes[:8])
-	fmt.Printf("DEBUG: PubY[0:8] = %x\n", pubYBytes[:8])
-
 	resultPrivateKey := make([]byte, 32)
 	resultAddress := make([]byte, 20)
 

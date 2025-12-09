@@ -179,44 +179,17 @@ int eoa_cuda_miner_mine(
     err = cudaMemset(ctx->d_found, 0, sizeof(int));
     if (err != cudaSuccess) return -1;
 
-    // Prepare batch base pubkey
-    uint256 pub_x, pub_y;
-    // We need a helper to load bytes to uint256 struct?
-    // Actually we can just cast if we trust endianness or use a kernel wrapper?
-    // Or copy to kernel argument.
-    // Let's use `uint256_from_bytes_be` host-side? No, that's device code.
-    // We can manually load it.
-    // Or simpler: pass bytes to kernel? No, kernel expects uint256 by value (struct of value arrays).
-    // Let's manually construct uint256 on host.
-    // Host code doesn't have `uint256` definition exposed easily (it's in .cu).
-    // But we know it's `u64 limbs[4]`. AND it's likely little-endian limbs internally for math?
-    // Wait, `uint256.cu` implementation:
-    // `uint256_from_bytes_be` loads bytes into limbs.
-    // `r->limbs[3] = ... bytes[0]...` -> MSB is in limbs[3].
-    // So distinct from simple cast if host is little endian.
-    // We should probably just pass the bytes to the kernel and let the kernel load it?
-    // But `mine_eoa_opt` signature I anticipated `uint256`.
-    // OK, let's keep `uint256` in signature but realize we have to construct it on host.
-    // OR change signature to `uchar*`.
-    
-    // Let's change `mine_eoa_opt` in `eoa_miner.cu` to accept `uint256`.
-    // And here we construct it.
-    // We need to implement `load_uint256_be` on host matching the device layout.
-    
-    uint256 h_pub_x, h_pub_y;
-    // Manual BE load to limbs
-    auto load_be = [](uint256* r, const unsigned char* bytes) {
-        for(int i=0; i<4; i++) {
-            r->limbs[3-i] = 
-                ((u64)bytes[i*8+0] << 56) | ((u64)bytes[i*8+1] << 48) |
-                ((u64)bytes[i*8+2] << 40) | ((u64)bytes[i*8+3] << 32) |
-                ((u64)bytes[i*8+4] << 24) | ((u64)bytes[i*8+5] << 16) |
-                ((u64)bytes[i*8+6] << 8)  | ((u64)bytes[i*8+7]);
-        }
-    };
-    
-    load_be(&h_pub_x, batch_base_pub_x);
-    load_be(&h_pub_y, batch_base_pub_y);
+    // Copy batch base public key to constant memory
+    err = cudaMemcpyToSymbol(c_batch_base_pub_x, batch_base_pub_x, 32);
+    if (err != cudaSuccess) {
+         printf("CUDA error copying batch base pub x: %d (%s)\n", err, cudaGetErrorString(err));
+         return -1;
+    }
+    err = cudaMemcpyToSymbol(c_batch_base_pub_y, batch_base_pub_y, 32);
+    if (err != cudaSuccess) {
+         printf("CUDA error copying batch base pub y: %d (%s)\n", err, cudaGetErrorString(err));
+         return -1;
+    }
 
     // Launch kernel - 256 threads per block
     int block_size = 256;
@@ -224,8 +197,6 @@ int eoa_cuda_miner_mine(
 
     mine_eoa_opt<<<num_blocks, block_size>>>(
         (u64)start_nonce,
-        h_pub_x,
-        h_pub_y,
         (AffinePoint*)ctx->d_generator_table,
         ctx->d_result_private_key,
         ctx->d_result_address,
