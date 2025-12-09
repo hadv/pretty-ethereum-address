@@ -180,12 +180,27 @@ int eoa_cuda_miner_mine(
     if (err != cudaSuccess) return -1;
 
     // Copy batch base public key to constant memory
-    err = cudaMemcpyToSymbol(c_batch_base_pub_x, batch_base_pub_x, 32);
+    // Use cudaGetSymbolAddress + cudaMemcpy for explicit handling
+    void* d_pub_x = NULL;
+    void* d_pub_y = NULL;
+    
+    err = cudaGetSymbolAddress(&d_pub_x, c_batch_base_pub_x);
+    if (err != cudaSuccess) {
+         printf("CUDA error getting symbol address x: %d (%s)\n", err, cudaGetErrorString(err));
+         return -1;
+    }
+    err = cudaMemcpy(d_pub_x, batch_base_pub_x, 32, cudaMemcpyHostToDevice);
     if (err != cudaSuccess) {
          printf("CUDA error copying batch base pub x: %d (%s)\n", err, cudaGetErrorString(err));
          return -1;
     }
-    err = cudaMemcpyToSymbol(c_batch_base_pub_y, batch_base_pub_y, 32);
+
+    err = cudaGetSymbolAddress(&d_pub_y, c_batch_base_pub_y);
+    if (err != cudaSuccess) {
+         printf("CUDA error getting symbol address y: %d (%s)\n", err, cudaGetErrorString(err));
+         return -1;
+    }
+    err = cudaMemcpy(d_pub_y, batch_base_pub_y, 32, cudaMemcpyHostToDevice);
     if (err != cudaSuccess) {
          printf("CUDA error copying batch base pub y: %d (%s)\n", err, cudaGetErrorString(err));
          return -1;

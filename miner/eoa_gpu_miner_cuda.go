@@ -141,12 +141,6 @@ func (m *EOACUDAMiner) Mine(basePrivateKey []byte, pattern []byte, startNonce ui
 	copy(pubXBytes[32-len(pubX):], pubX)
 	copy(pubYBytes[32-len(pubY):], pubY)
 	
-	// Test: Reverse bytes (Little Endian conversion?)
-	for i := 0; i < 16; i++ {
-		pubXBytes[i], pubXBytes[31-i] = pubXBytes[31-i], pubXBytes[i]
-		pubYBytes[i], pubYBytes[31-i] = pubYBytes[31-i], pubYBytes[i]
-	}
-	
 	resultPrivateKey := make([]byte, 32)
 	resultAddress := make([]byte, 20)
 
