@@ -1,0 +1,60 @@
+name: AVX-512 IFMA Benchmark
+
+on:
+  workflow_dispatch:  # Manual trigger only
+  push:
+    paths:
+      - 'poc/secp256k1-avx2/**'
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check CPU Features
+        run: |
+          echo "=== CPU Information ==="
+          lscpu | grep -E "Model name|CPU|cache|Flags" | head -20
+          echo
+          echo "=== AVX Features ==="
+          grep -o 'avx[^ ]*' /proc/cpuinfo | sort -u || echo "No AVX found"
+          echo
+          if grep -q avx512ifma /proc/cpuinfo; then
+            echo "✅ AVX-512 IFMA is available!"
+          else
+            echo "⚠️ AVX-512 IFMA not available on this runner"
+            echo "Will run AVX2 benchmark only"
+          fi
+      
+      - name: Build AVX2 Benchmark
+        run: |
+          cd poc/secp256k1-avx2
+          gcc -O3 -march=native -mavx2 -o bench bench.c
+      
+      - name: Build AVX-512 Benchmark (if supported)
+        run: |
+          cd poc/secp256k1-avx2
+          if grep -q avx512ifma /proc/cpuinfo; then
+            gcc -O3 -march=native -mavx512f -mavx512ifma -o bench_avx512 bench_avx512.c
+          else
+            echo "Skipping AVX-512 build - not supported"
+          fi
+      
+      - name: Run AVX2 Benchmark
+        run: |
+          cd poc/secp256k1-avx2
+          echo "=== AVX2 4-way Benchmark ==="
+          ./bench
+      
+      - name: Run AVX-512 Benchmark (if supported)
+        run: |
+          cd poc/secp256k1-avx2
+          if [ -f bench_avx512 ]; then
+            echo "=== AVX-512 IFMA 8-way Benchmark ==="
+            ./bench_avx512
+          else
+            echo "AVX-512 benchmark not available"
+          fi
+
