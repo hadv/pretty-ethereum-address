@@ -143,5 +143,28 @@ static inline void fe_add(fe_t *r, const fe_t *a, const fe_t *b) {
     r->n[4] = a->n[4] + b->n[4];
 }
 
+/**
+ * Field subtraction: r = a - b + 2*p (to avoid underflow)
+ */
+static inline void fe_sub(fe_t *r, const fe_t *a, const fe_t *b) {
+    /* Add 2*p to avoid underflow */
+    r->n[0] = a->n[0] - b->n[0] + 0x1FFFFDFFFFF85EULL;
+    r->n[1] = a->n[1] - b->n[1] + 0x1FFFFFFFFFFFFEULL;
+    r->n[2] = a->n[2] - b->n[2] + 0x1FFFFFFFFFFFFEULL;
+    r->n[3] = a->n[3] - b->n[3] + 0x1FFFFFFFFFFFFEULL;
+    r->n[4] = a->n[4] - b->n[4] + 0x1FFFFFFFFFFFFEULL;
+}
+
+/**
+ * Field negation: r = -a = 2*p - a
+ */
+static inline void fe_neg(fe_t *r, const fe_t *a) {
+    r->n[0] = 0x1FFFFDFFFFF85EULL - a->n[0];
+    r->n[1] = 0x1FFFFFFFFFFFFEULL - a->n[1];
+    r->n[2] = 0x1FFFFFFFFFFFFEULL - a->n[2];
+    r->n[3] = 0x1FFFFFFFFFFFFEULL - a->n[3];
+    r->n[4] = 0x1FFFFFFFFFFFFEULL - a->n[4];
+}
+
 #endif /* SECP256K1_AVX2_FIELD_MUL_H */
 

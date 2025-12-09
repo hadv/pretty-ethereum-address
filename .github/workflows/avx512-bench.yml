@@ -28,10 +28,11 @@ jobs:
             echo "Will run AVX2 benchmark only"
           fi
       
-      - name: Build AVX2 Benchmark
+      - name: Build AVX2 Benchmarks
         run: |
           cd poc/secp256k1-avx2
           gcc -O3 -march=native -mavx2 -o bench bench.c
+          gcc -O3 -march=native -mavx2 -o bench_point bench_point.c
       
       - name: Build AVX-512 Benchmark (if supported)
         run: |
@@ -42,11 +43,17 @@ jobs:
             echo "Skipping AVX-512 build - not supported"
           fi
       
-      - name: Run AVX2 Benchmark
+      - name: Run AVX2 Field Multiplication Benchmark
         run: |
           cd poc/secp256k1-avx2
-          echo "=== AVX2 4-way Benchmark ==="
+          echo "=== AVX2 4-way Field Multiplication Benchmark ==="
           ./bench
+
+      - name: Run AVX2 Point Addition Benchmark
+        run: |
+          cd poc/secp256k1-avx2
+          echo "=== AVX2 4-way Point Addition Benchmark ==="
+          ./bench_point
       
       - name: Run AVX-512 Benchmark (if supported)
         run: |

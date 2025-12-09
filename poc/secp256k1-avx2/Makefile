@@ -17,18 +17,24 @@ ifeq ($(shell uname),Linux)
     CFLAGS = -O3 -march=native -mavx2 -Wall -Wextra
 endif
 
-HEADERS = field.h field_mul.h field_mul_avx2.h
+HEADERS = field.h field_mul.h field_mul_avx2.h field_ops_avx2.h group.h group_avx2.h
 
-all: bench
+all: bench bench_point
 
 bench: bench.c $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ bench.c
 
+bench_point: bench_point.c $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ bench_point.c
+
 run: bench
 	./bench
 
+run-point: bench_point
+	./bench_point
+
 clean:
-	rm -f bench
+	rm -f bench bench_point
 
 # Debug build with symbols
 debug: CFLAGS = -O0 -g -mavx2 -Wall -Wextra
@@ -48,5 +54,5 @@ else
 	fi
 endif
 
-.PHONY: all run clean debug check-avx2
+.PHONY: all run run-point clean debug check-avx2
 
