@@ -167,6 +167,18 @@ func (m *EOACUDAMiner) Mine(basePrivateKey []byte, pattern []byte, startNonce ui
 		copy(result.PrivateKey[:], resultPrivateKey)
 		copy(result.Address[:], resultAddress)
 		result.Nonce = startNonce
+		
+		// DEBUG: Verify the address by recomputing it in Go
+		verifyPrivKey, err := crypto.ToECDSA(resultPrivateKey)
+		if err == nil {
+			expectedAddr := crypto.PubkeyToAddress(verifyPrivKey.PublicKey)
+			fmt.Printf("DEBUG: CUDA returned addr: 0x%x\n", resultAddress)
+			fmt.Printf("DEBUG: Go computed addr:   %s\n", expectedAddr.Hex())
+			if expectedAddr.Hex() != fmt.Sprintf("0x%x", resultAddress) {
+				fmt.Println("WARNING: Address mismatch!")
+			}
+		}
+		
 		return result, elapsed, nil
 	}
 
