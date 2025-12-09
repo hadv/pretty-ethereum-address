@@ -225,18 +225,6 @@ extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa_opt(
     if (*found) return;
 
     u64 idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int tid = threadIdx.x;
-    
-    // Shared memory for batched inversion
-    // We need 2 buffers for scan? No, we can reuse if serialized.
-    // L[256], R[256]. total 512 * 32 bytes = 16KB.
-    // Plus we need space for Z coordinates?
-    // Let's declare shared memory:
-    __shared__ uint256 sh_L[256];
-    __shared__ uint256 sh_R[256];
-    // We also need to store "Total Inverse" somewhere or broadcast it.
-    __shared__ uint256 sh_InvTotal;
-
     
     // R = BatchBase + Table[idx]
     JacobianPoint R;
@@ -261,68 +249,10 @@ extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa_opt(
     // For idx==0: R is already batch_base_pub, which is correct.
 
     // --------------------------------------------------------
-    // Batched Inversion of R.Z
+    // Convert to Affine (using standard per-thread inversion for debugging)
     // --------------------------------------------------------
-    uint256 z = R.Z;
-    
-    // 1. Compute Prefix Products (L)
-    uint256 L_val = block_scan_prefix_mul(z, sh_L);
-    
-    // 2. Compute Suffix Products (R)
-    uint256 R_val = block_scan_suffix_mul(z, sh_R);
-    
-    // 3. Thread 0 computes inverse of Total Product
-    if (tid == 0) {
-        // Total Product is L[last] or R[first]
-        // L[255] contains product of all Zs.
-        uint256 total_prod = sh_L[255];
-        uint256_inv_mod_p(&sh_InvTotal, &total_prod);
-    }
-    __syncthreads();
-    
-    // 4. Compute Inverse for this thread
-    // Inv(z_i) = L_{i-1} * R_{i+1} * InvTotal
-    // Handle boundaries: if i=0, L_{-1}=1. If i=255, R_{256}=1.
-    
-    uint256 inv_z;
-    uint256 tmp;
-    
-    // Start with InvTotal
-    inv_z = sh_InvTotal;
-    
-    if (tid > 0) {
-        // Multiply by L[tid-1] (prefix product of previous elements)
-        tmp = inv_z;
-        uint256 prev_L = sh_L[tid-1]; 
-        // Note: sh_L was written by prefix scan.
-        // Wait, sh_L was OVERWRITTEN by suffix scan?
-        // block_scan_suffix_mul uses buffer sh_R? 
-        // YES, I passed sh_R to suffix scan. sh_L is safe.
-        uint256_mul_mod_p(&inv_z, &tmp, &prev_L);
-    }
-    
-    if (tid < 255) {
-        // Multiply by R[tid+1] (suffix product of next elements)
-        tmp = inv_z;
-        uint256 next_R = sh_R[tid+1];
-        uint256_mul_mod_p(&inv_z, &tmp, &next_R);
-    }
-    
-    // Now inv_z is the modular inverse of R.Z
-    
-    // --------------------------------------------------------
-    // Convert to Affine using inv_z
-    // --------------------------------------------------------
-    // x = X * inv_z^2
-    // y = Y * inv_z^3
-    
-    uint256 z2, z3;
-    uint256_sqr_mod_p(&z2, &inv_z);       // z^2
-    uint256_mul_mod_p(&z3, &z2, &inv_z);  // z^3
-    
     AffinePoint P;
-    uint256_mul_mod_p(&P.x, &R.X, &z2);
-    uint256_mul_mod_p(&P.y, &R.Y, &z3);
+    jacobian_to_affine(&P, &R);
 
     // Serialize
     uchar pubkey_bytes[64];
