@@ -50,6 +50,7 @@ import "C"
 
 import (
 	"fmt"
+	"math/big"
 	"time"
 	"unsafe"
 
@@ -112,18 +113,11 @@ func (m *EOACUDAMiner) Mine(basePrivateKey []byte, pattern []byte, startNonce ui
 	startTime := time.Now()
 
 	// Calculate start private key: priv = base + nonce
-	// Implementation of 256-bit addition (basePriv + startNonce)
-	// basePriv is 32 bytes big-endian.
+	// Use big.Int for correct 256-bit addition
+	privKeyBigInt := new(big.Int).SetBytes(basePrivateKey)
+	privKeyBigInt.Add(privKeyBigInt, new(big.Int).SetUint64(startNonce))
 	currentPrivKey := make([]byte, 32)
-	copy(currentPrivKey, basePrivateKey)
-	
-	// Add startNonce (big-endian addition of 64-bit value to 256-bit byte array)
-	var carry uint64 = startNonce
-	for i := 31; i >= 0 && carry > 0; i-- {
-		sum := uint64(currentPrivKey[i]) + (carry & 0xFF)
-		currentPrivKey[i] = byte(sum)
-		carry = (carry >> 8) + (sum >> 8)
-	}
+	privKeyBigInt.FillBytes(currentPrivKey)
 
 	// Calculate Public Key for currentPrivKey uses go-ethereum/crypto
 	// We need X and Y coordinates.
