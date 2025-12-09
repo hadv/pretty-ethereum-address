@@ -21,6 +21,8 @@ typedef struct {
     unsigned char* d_result_address;
     int* d_found;
     void* d_generator_table; // AffinePoint*
+    void* d_batch_pub_x;
+    void* d_batch_pub_y;
     int batch_size;
     char device_name[256];
     // Cache for avoiding repeated copies to constant memory
@@ -83,6 +85,21 @@ EOACUDAMinerContext* eoa_cuda_miner_init(int device_index, int batch_size) {
         cudaFree(ctx->d_found);
         free(ctx); return NULL;
     }
+    
+    // Allocate batch base pubkeys (Global Memory approach)
+    err = cudaMalloc(&ctx->d_batch_pub_x, 32);
+    if (err != cudaSuccess) {
+        cudaFree(ctx->d_generator_table);
+        // ... (cleanup others)
+        free(ctx); return NULL;
+    }
+    err = cudaMalloc(&ctx->d_batch_pub_y, 32);
+    if (err != cudaSuccess) {
+        cudaFree(ctx->d_batch_pub_x);
+        cudaFree(ctx->d_generator_table);
+        // ...
+        free(ctx); return NULL;
+    }
 
     // Initialize generator table
     int block_size = 256;
@@ -92,6 +109,8 @@ EOACUDAMinerContext* eoa_cuda_miner_init(int device_index, int batch_size) {
     err = cudaDeviceSynchronize();
     if (err != cudaSuccess) {
          // Cleanup...
+         cudaFree(ctx->d_batch_pub_x);
+         cudaFree(ctx->d_batch_pub_y);
          cudaFree(ctx->d_generator_table);
          cudaFree(ctx->d_result_private_key);
          cudaFree(ctx->d_result_address);
