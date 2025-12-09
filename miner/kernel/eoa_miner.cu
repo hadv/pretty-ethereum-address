@@ -252,7 +252,15 @@ extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa_opt(
     // Convert to Affine (using standard per-thread inversion for debugging)
     // --------------------------------------------------------
     AffinePoint P;
-    jacobian_to_affine(&P, &R);
+    
+    // DEBUG: For idx=0, skip jacobian_to_affine and directly use the input
+    // to verify the input bytes are correct
+    if (idx == 0) {
+        P.x = batch_base_pub_x;
+        P.y = batch_base_pub_y;
+    } else {
+        jacobian_to_affine(&P, &R);
+    }
 
     // Serialize
     uchar pubkey_bytes[64];
