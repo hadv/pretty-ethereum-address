@@ -244,13 +244,21 @@ extern "C" __global__ __launch_bounds__(256, 2) void mine_eoa_opt(
     R.Y = batch_base_pub_y;
     R.Z = UINT256_ONE;
 
-    AffinePoint G_i = generator_table[idx]; // Load precomputed i*G
-    
-    // R = R + G_i
-    // Note: Must use temporary to avoid aliasing issue (r and p same memory)
-    JacobianPoint result;
-    point_add_mixed(&result, &R, &G_i);
-    R = result;
+    // Handle idx=0 specially: Table[0] = 0*G = infinity (stored as (0,0))
+    // Adding infinity is identity, so for global idx=0 we skip the addition.
+    // However, global idx=0 only happens for thread 0 of block 0.
+    // For each block, we use `idx` which is the GLOBAL index.
+    // So we only need to handle the case when idx==0 (first thread of first block).
+    if (idx != 0) {
+        AffinePoint G_i = generator_table[idx]; // Load precomputed i*G
+        
+        // R = R + G_i
+        // Note: Must use temporary to avoid aliasing issue (r and p same memory)
+        JacobianPoint result;
+        point_add_mixed(&result, &R, &G_i);
+        R = result;
+    }
+    // For idx==0: R is already batch_base_pub, which is correct.
 
     // --------------------------------------------------------
     // Batched Inversion of R.Z
