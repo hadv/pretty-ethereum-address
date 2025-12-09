@@ -122,14 +122,18 @@ func (m *EOACUDAMiner) Mine(basePrivateKey []byte, pattern []byte, startNonce ui
 	// Calculate Public Key for currentPrivKey uses go-ethereum/crypto
 	// We need X and Y coordinates.
 	// crypto.ToECDSA requires strict private key validity checks, but for random keys we assume valid.
-	pubKey, err := crypto.ToECDSA(currentPrivKey)
+	privKey, err := crypto.ToECDSA(currentPrivKey)
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid private key derived: %v", err)
 	}
 
+	// DEBUG: Print expected address for the batch base (idx=0)
+	expectedAddr := crypto.PubkeyToAddress(privKey.PublicKey)
+	fmt.Printf("DEBUG: Batch start addr (idx=0): %s\n", expectedAddr.Hex())
+
 	// Get X and Y as 32-byte big-endian arrays
-	pubX := pubKey.X.Bytes()
-	pubY := pubKey.Y.Bytes()
+	pubX := privKey.PublicKey.X.Bytes()
+	pubY := privKey.PublicKey.Y.Bytes()
 	
 	// Pad to 32 bytes if needed (big.Int.Bytes() strips leading zeros)
 	pubXBytes := make([]byte, 32)
