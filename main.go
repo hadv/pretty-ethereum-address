@@ -42,7 +42,10 @@ func main() {
 	flag.BoolVar(useGPU, "g", false, "Use GPU for mining (shorthand)")
 
 	// SIMD flag
-	useSIMD := flag.Bool("simd", false, "Use SIMD-optimized CPU miner (AVX2 4-way parallel Keccak)")
+	useSIMD := flag.Bool("simd", false, "Use SIMD-optimized CPU miner (AVX2 4-way parallel Keccak) (Create2 only)")
+	
+	// Mode flag
+	mode := flag.String("mode", "create2", "Mining mode: create2 or eoa")
 
 	gpuBackend := flag.String("gpu-backend", "opencl", "GPU backend to use: opencl, cuda, or auto")
 	gpuDevice := flag.Int("gpu-device", 0, "GPU device index to use (deprecated, use --gpu-devices)")
@@ -58,7 +61,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  CPU mode:\n")
+		fmt.Fprintf(os.Stderr, "    %s -i <hash> -s <addr> -p 0x00... (Create2 Mode)\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "    %s --mode eoa -p 0xABC... (EOA/Private Key Mode)\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  Create2 CPU mode:\n")
 		fmt.Fprintf(os.Stderr, "    %s -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  CPU mode with SIMD (AVX2 4-way parallel, ~2x faster):\n")
 		fmt.Fprintf(os.Stderr, "    %s --simd -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n\n", os.Args[0])
@@ -117,14 +123,41 @@ func main() {
 	}
 
 	// Validate required flags
+	// Handle EOA Mode
+	if *mode == "eoa" {
+		if *pattern == "0x00000000" && !isFlagPassed("pattern") && !isFlagPassed("p") {
+			// Warn if default pattern
+			fmt.Println("Warning: Using default pattern 0x00000000")
+		}
+		
+		fmt.Printf("Starting EOA (Private Key) Vanity Miner...\n")
+		fmt.Printf("Pattern: %s\n", *pattern)
+		
+		eoaMiner := miner.NewEOASIMDMiner()
+		fmt.Printf("Using Sequential Derivation + AVX2 (if available)\n")
+		
+		result := eoaMiner.Mine(*pattern)
+		
+		if result != nil {
+			fmt.Printf("\nFound!\n")
+			fmt.Printf("Private Key:  0x%s\n", hex.EncodeToString(result.PrivateKey))
+			fmt.Printf("Address:      0x%s\n", hex.EncodeToString(result.Address[:]))
+			fmt.Printf("Time elapsed: %s\n", result.Elapsed)
+			fmt.Printf("Total hashes: %d\n", result.TotalHashes)
+			fmt.Printf("Hash rate:    %.2f MH/s\n", result.HashRate)
+		}
+		os.Exit(0)
+	}
+
+	// Validate required flags for Create2
 	if *initCodeHashStr == "" {
-		fmt.Fprintln(os.Stderr, "Error: --init-code-hash (-i) is required")
+		fmt.Fprintln(os.Stderr, "Error: --init-code-hash (-i) is required for create2 mode")
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	if *saltPrefixStr == "" {
-		fmt.Fprintln(os.Stderr, "Error: --salt-prefix (-s) is required")
+		fmt.Fprintln(os.Stderr, "Error: --salt-prefix (-s) is required for create2 mode")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -402,4 +435,14 @@ func runCPUMiner(dataTemplate []byte, patternBytes []byte, saltPrefixBytes [20]b
 
 	cpuMiner.Mine(dataTemplate, patternBytes, saltPrefixBytes)
 	os.Exit(0)
+}
+
+func isFlagPassed(name string) bool {
+	found := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
 }
