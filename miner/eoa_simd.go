@@ -30,7 +30,7 @@ func NewEOASIMDMiner() *EOASIMDMiner {
 	simdEnabled := keccakf1600.IsEnabledX4()
 
 	return &EOASIMDMiner{
-		numGoroutines: numCores,
+		numGoroutines: numCores * 4,
 		simdEnabled:   simdEnabled,
 	}
 }
