@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ecdsa"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -9,8 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/google/uuid"
 	"github.com/hadv/vaneth/miner"
+	"golang.org/x/term"
 )
 
 const logo = `
@@ -47,6 +52,12 @@ func main() {
 	// Mode flag
 	mode := flag.String("mode", "create2", "Mining mode: create2 or eoa")
 
+	// EOA output flags
+	outputPath := flag.String("output", "", "Output keystore file path for EOA mode (default: UTC--<timestamp>--<address>)")
+	flag.StringVar(outputPath, "o", "", "Output keystore file path for EOA mode (shorthand)")
+	password := flag.String("password", "", "Password for keystore encryption (will prompt interactively if not provided)")
+	lightKDF := flag.Bool("light-kdf", false, "Use lighter scrypt parameters for faster keystore encryption (less secure)")
+
 	gpuBackend := flag.String("gpu-backend", "opencl", "GPU backend to use: opencl, cuda, or auto")
 	gpuDevice := flag.Int("gpu-device", 0, "GPU device index to use (deprecated, use --gpu-devices)")
 	gpuDevicesStr := flag.String("gpu-devices", "", "GPU device indices to use (comma-separated or 'all'). Overrides --gpu-device")
@@ -62,7 +73,7 @@ func main() {
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "    %s -i <hash> -s <addr> -p 0x00... (Create2 Mode)\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "    %s --mode eoa -p 0xABC... (EOA/Private Key Mode)\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "    %s --mode eoa -p 0xABC... (EOA Mode, saves encrypted keystore)\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  Create2 CPU mode:\n")
 		fmt.Fprintf(os.Stderr, "    %s -i 747dd63dfae991117debeb008f2fb0533bb59a6eee74ba0e197e21099d034c7a -s 0x18Ee4C040568238643C07e7aFd6c53efc196D26b -p 0x00000000\n\n", os.Args[0])
@@ -137,14 +148,34 @@ func main() {
 		fmt.Printf("Using Sequential Derivation + AVX2 (if available)\n")
 		
 		result := eoaMiner.Mine(*pattern)
-		
+
 		if result != nil {
 			fmt.Printf("\nFound!\n")
-			fmt.Printf("Private Key:  0x%s\n", hex.EncodeToString(result.PrivateKey))
 			fmt.Printf("Address:      0x%s\n", hex.EncodeToString(result.Address[:]))
 			fmt.Printf("Time elapsed: %s\n", result.Elapsed)
 			fmt.Printf("Total hashes: %d\n", result.TotalHashes)
 			fmt.Printf("Hash rate:    %.2f MH/s\n", result.HashRate)
+
+			// Convert raw private key bytes to ECDSA key
+			privateKey, err := crypto.ToECDSA(result.PrivateKey)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error converting private key: %v\n", err)
+				os.Exit(1)
+			}
+
+			// Zero the raw private key bytes in the result
+			for i := range result.PrivateKey {
+				result.PrivateKey[i] = 0
+			}
+
+			// Save to encrypted keystore
+			if err := saveKeystore(privateKey, *outputPath, *password, *lightKDF); err != nil {
+				fmt.Fprintf(os.Stderr, "Error saving keystore: %v\n", err)
+				os.Exit(1)
+			}
+
+			// Zero the private key from memory
+			zeroKey(privateKey)
 		}
 		os.Exit(0)
 	}
@@ -445,4 +476,82 @@ func isFlagPassed(name string) bool {
 		}
 	})
 	return found
+}
+
+// saveKeystore encrypts the private key and writes it to a JSON keystore file.
+func saveKeystore(privateKey *ecdsa.PrivateKey, outputPath string, passwordFlag string, lightKDF bool) error {
+	// Get or prompt for password
+	pass := passwordFlag
+	if pass == "" {
+		fmt.Print("\nEnter password to encrypt keystore: ")
+		passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			return fmt.Errorf("failed to read password: %w", err)
+		}
+		fmt.Print("Confirm password: ")
+		confirmBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			return fmt.Errorf("failed to read password confirmation: %w", err)
+		}
+		if string(passBytes) != string(confirmBytes) {
+			return fmt.Errorf("passwords do not match")
+		}
+		pass = string(passBytes)
+	}
+
+	if len(pass) == 0 {
+		return fmt.Errorf("password cannot be empty")
+	}
+
+	// Build keystore Key struct
+	addr := crypto.PubkeyToAddress(privateKey.PublicKey)
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return fmt.Errorf("failed to generate UUID: %w", err)
+	}
+	key := &keystore.Key{
+		Id:         id,
+		Address:    addr,
+		PrivateKey: privateKey,
+	}
+
+	// Encrypt
+	scryptN, scryptP := keystore.StandardScryptN, keystore.StandardScryptP
+	if lightKDF {
+		scryptN, scryptP = keystore.LightScryptN, keystore.LightScryptP
+	}
+	keyjson, err := keystore.EncryptKey(key, pass, scryptN, scryptP)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt key: %w", err)
+	}
+
+	// Determine output path
+	if outputPath == "" {
+		ts := time.Now().UTC()
+		outputPath = fmt.Sprintf("UTC--%s--%s",
+			ts.Format("2006-01-02T15-04-05.000000000Z"),
+			hex.EncodeToString(addr[:]))
+	}
+
+	// Write with restricted permissions (owner read/write only)
+	if err := os.WriteFile(outputPath, keyjson, 0600); err != nil {
+		return fmt.Errorf("failed to write keystore file: %w", err)
+	}
+
+	fmt.Printf("\nKeystore saved to: %s\n", outputPath)
+	fmt.Println("WARNING: Do not forget your password. The private key cannot be recovered without it.")
+	return nil
+}
+
+// zeroKey zeroes the private key material in memory.
+func zeroKey(k *ecdsa.PrivateKey) {
+	if k == nil {
+		return
+	}
+	b := k.D.Bits()
+	for i := range b {
+		b[i] = 0
+	}
 }
