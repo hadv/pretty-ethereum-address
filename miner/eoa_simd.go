@@ -13,6 +13,7 @@ import (
 
 	"github.com/cloudflare/circl/simd/keccakf1600"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"golang.org/x/sys/unix"
 )
 
 // EOASIMDMiner handles EOA-based vanity mining with SIMD acceleration
@@ -288,10 +289,14 @@ func (m *EOASIMDMiner) Mine(patternStr string) *EOAResult {
 
 							// Reconstruct Private Key
 							foundKey := new(big.Int).Set(privKeys[lane])
+							keyBytes := foundKey.Bytes()
+
+							// Lock private key memory to prevent swapping to disk
+							_ = unix.Mlock(keyBytes)
 
 							resultMu.Lock()
 							result = &EOAResult{
-								PrivateKey:  foundKey.Bytes(),
+								PrivateKey:  keyBytes,
 								Address:     addrBytes,
 								Elapsed:     elapsed,
 								TotalHashes: hashes,

@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/google/uuid"
 	"github.com/hadv/vaneth/miner"
+	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
 
@@ -163,10 +164,11 @@ func main() {
 				os.Exit(1)
 			}
 
-			// Zero the raw private key bytes in the result
+			// Zero the raw private key bytes and unlock from mlock
 			for i := range result.PrivateKey {
 				result.PrivateKey[i] = 0
 			}
+			_ = unix.Munlock(result.PrivateKey)
 
 			// Save to encrypted keystore
 			if err := saveKeystore(privateKey, *outputPath, *password, *lightKDF); err != nil {
