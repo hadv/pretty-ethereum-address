@@ -289,7 +289,8 @@ func (m *EOASIMDMiner) Mine(patternStr string) *EOAResult {
 
 							// Reconstruct Private Key
 							foundKey := new(big.Int).Set(privKeys[lane])
-							keyBytes := foundKey.Bytes()
+							keyBytes := make([]byte, 32)
+							foundKey.FillBytes(keyBytes)
 
 							// Lock private key memory to prevent swapping to disk
 							_ = unix.Mlock(keyBytes)
